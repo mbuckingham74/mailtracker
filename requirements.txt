@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+sqlalchemy
+aiomysql
+pymysql
+python-dotenv
+jinja2
+python-multipart
+cryptography

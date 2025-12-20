@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - Mailtrack{% endblock %}
+{% block content %}
+<h1>Tracked Emails</h1>
+
+{% if tracks %}
+<table>
+    <thead>
+        <tr>
+            <th>Recipient</th>
+            <th>Subject</th>
+            <th>Created</th>
+            <th>Opens</th>
+            <th>First Open</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for item in tracks %}
+        <tr class="{% if item.open_count > 0 %}opened{% endif %}">
+            <td>{{ item.track.recipient or '-' }}</td>
+            <td>{{ item.track.subject or '-' }}</td>
+            <td>{{ item.track.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+            <td class="open-count">{{ item.open_count }}</td>
+            <td>{{ item.first_open.strftime('%Y-%m-%d %H:%M') if item.first_open else '-' }}</td>
+            <td>
+                <a href="/detail/{{ item.track.id }}" class="btn btn-sm">View</a>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p class="empty">No tracked emails yet. <a href="/create">Create your first one</a>.</p>
+{% endif %}
+{% endblock %}

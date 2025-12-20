@@ -1,0 +1,58 @@
+from fastapi import APIRouter, Request, Depends
+from fastapi.responses import Response
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from ..database import get_db, TrackedEmail, Open
+import base64
+
+router = APIRouter()
+
+# 1x1 transparent GIF (43 bytes)
+PIXEL_GIF = base64.b64decode(
+    "R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
+)
+
+@router.get("/p/{tracking_id}.gif")
+async def track_pixel(
+    tracking_id: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db)
+):
+    # Always return pixel regardless of whether tracking_id exists
+    # This prevents information leakage
+    
+    try:
+        # Check if tracking ID exists
+        result = await db.execute(
+            select(TrackedEmail).where(TrackedEmail.id == tracking_id)
+        )
+        tracked_email = result.scalar_one_or_none()
+        
+        if tracked_email:
+            # Get client info
+            ip_address = request.headers.get("X-Real-IP") or request.headers.get("X-Forwarded-For") or request.client.host
+            user_agent = request.headers.get("User-Agent", "")
+            referer = request.headers.get("Referer", "")
+            
+            # Log the open
+            open_record = Open(
+                tracked_email_id=tracking_id,
+                ip_address=ip_address,
+                user_agent=user_agent,
+                referer=referer
+            )
+            db.add(open_record)
+            await db.commit()
+    except Exception:
+        # Silently fail - don't break pixel delivery
+        pass
+    
+    return Response(
+        content=PIXEL_GIF,
+        media_type="image/gif",
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0"
+        }
+    )

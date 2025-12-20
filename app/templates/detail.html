@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}{{ track.subject or track.recipient or 'Track Details' }} - Mailtrack{% endblock %}
+{% block content %}
+<div class="detail-header">
+    <h1>Track Details</h1>
+    <form method="post" action="/delete/{{ track.id }}" style="display:inline" onsubmit="return confirm('Delete this track and all opens?')">
+        <button type="submit" class="btn btn-danger">Delete</button>
+    </form>
+</div>
+
+<div class="track-info">
+    <p><strong>Recipient:</strong> {{ track.recipient or '-' }}</p>
+    <p><strong>Subject:</strong> {{ track.subject or '-' }}</p>
+    <p><strong>Notes:</strong> {{ track.notes or '-' }}</p>
+    <p><strong>Created:</strong> {{ track.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</p>
+    <p><strong>Total Opens:</strong> {{ opens|length }}</p>
+</div>
+
+<h2>Pixel Code</h2>
+<div class="code-block">
+    <p><strong>HTML (paste in email):</strong></p>
+    <pre><code>{{ html_snippet }}</code></pre>
+    <button onclick="navigator.clipboard.writeText('{{ html_snippet }}')" class="btn btn-sm">Copy HTML</button>
+</div>
+
+<div class="code-block">
+    <p><strong>Pixel URL:</strong></p>
+    <pre><code>{{ pixel_url }}</code></pre>
+    <button onclick="navigator.clipboard.writeText('{{ pixel_url }}')" class="btn btn-sm">Copy URL</button>
+</div>
+
+<h2>Opens ({{ opens|length }})</h2>
+{% if opens %}
+<table>
+    <thead>
+        <tr>
+            <th>Time</th>
+            <th>IP Address</th>
+            <th>User Agent</th>
+            <th>Location</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for open in opens %}
+        <tr>
+            <td>{{ open.opened_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+            <td>{{ open.ip_address or '-' }}</td>
+            <td class="user-agent">{{ open.user_agent[:80] if open.user_agent else '-' }}{% if open.user_agent and open.user_agent|length > 80 %}...{% endif %}</td>
+            <td>{{ open.city or '' }}{% if open.city and open.country %}, {% endif %}{{ open.country or '-' }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p class="empty">No opens yet.</p>
+{% endif %}
+{% endblock %}

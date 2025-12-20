@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Create Track - Mailtrack{% endblock %}
+{% block content %}
+<h1>Create New Tracking Pixel</h1>
+
+<form method="post" action="/create" class="create-form">
+    <label>
+        Recipient Email (optional)
+        <input type="text" name="recipient" placeholder="john@example.com">
+    </label>
+    
+    <label>
+        Email Subject (optional)
+        <input type="text" name="subject" placeholder="Meeting follow-up">
+    </label>
+    
+    <label>
+        Notes (optional)
+        <textarea name="notes" placeholder="Any notes for yourself..."></textarea>
+    </label>
+    
+    <button type="submit">Create Tracking Pixel</button>
+</form>
+{% endblock %}
