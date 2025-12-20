@@ -5,6 +5,8 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    volumes:
+      - mailtrack_geoip:/app/data/geoip
     networks:
       - npm_network
       - mailtrack_internal
@@ -40,3 +42,4 @@ networks:
 
 volumes:
   mailtrack_mysql_data:
+  mailtrack_geoip:

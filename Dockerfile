@@ -3,7 +3,22 @@ FROM python:3.12-alpine
 WORKDIR /app
 
 # Install dependencies
-RUN pip install --no-cache-dir     fastapi     uvicorn[standard]     sqlalchemy     aiomysql     pymysql     python-dotenv     jinja2     python-multipart     cryptography     itsdangerous
+RUN pip install --no-cache-dir \
+    fastapi \
+    uvicorn[standard] \
+    sqlalchemy \
+    aiomysql \
+    pymysql \
+    python-dotenv \
+    jinja2 \
+    python-multipart \
+    cryptography \
+    itsdangerous \
+    geoip2 \
+    httpx
+
+# Create directory for GeoIP database
+RUN mkdir -p /app/data/geoip
 
 # Copy application
 COPY app/ ./app/

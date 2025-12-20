@@ -3,6 +3,7 @@ from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from ..database import get_db, TrackedEmail, Open
+from ..geoip import lookup_ip
 import base64
 
 router = APIRouter()
@@ -20,33 +21,42 @@ async def track_pixel(
 ):
     # Always return pixel regardless of whether tracking_id exists
     # This prevents information leakage
-    
+
     try:
         # Check if tracking ID exists
         result = await db.execute(
             select(TrackedEmail).where(TrackedEmail.id == tracking_id)
         )
         tracked_email = result.scalar_one_or_none()
-        
+
         if tracked_email:
             # Get client info
             ip_address = request.headers.get("X-Real-IP") or request.headers.get("X-Forwarded-For") or request.client.host
+            # Handle comma-separated list of IPs (from proxies)
+            if ip_address and "," in ip_address:
+                ip_address = ip_address.split(",")[0].strip()
+
             user_agent = request.headers.get("User-Agent", "")
             referer = request.headers.get("Referer", "")
-            
+
+            # GeoIP lookup
+            country, city = lookup_ip(ip_address)
+
             # Log the open
             open_record = Open(
                 tracked_email_id=tracking_id,
                 ip_address=ip_address,
                 user_agent=user_agent,
-                referer=referer
+                referer=referer,
+                country=country,
+                city=city
             )
             db.add(open_record)
             await db.commit()
     except Exception:
         # Silently fail - don't break pixel delivery
         pass
-    
+
     return Response(
         content=PIXEL_GIF,
         media_type="image/gif",

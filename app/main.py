@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
@@ -8,8 +9,18 @@ import os
 load_dotenv()
 
 from .routes import pixel, api, dashboard
+from .geoip import init_geoip
 
-app = FastAPI(title="Mailtrack", docs_url=None, redoc_url=None)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: Initialize GeoIP database
+    await init_geoip()
+    yield
+    # Shutdown: nothing to clean up
+
+
+app = FastAPI(title="Mailtrack", docs_url=None, redoc_url=None, lifespan=lifespan)
 
 # Session middleware for dashboard auth
 SECRET_KEY = os.getenv("SECRET_KEY", "change-this-to-a-random-string")
