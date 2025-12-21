@@ -2,6 +2,9 @@ FROM python:3.12-alpine
 
 WORKDIR /app
 
+# Install tzdata for timezone support (required by zoneinfo module)
+RUN apk add --no-cache tzdata
+
 # Install dependencies
 RUN pip install --no-cache-dir \
     fastapi \

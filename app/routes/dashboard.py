@@ -8,7 +8,7 @@ import uuid
 import os
 import ipaddress
 from datetime import datetime, timezone
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from urllib.parse import quote
 
 from ..database import get_db, TrackedEmail, Open
@@ -24,7 +24,14 @@ def get_pixel_url(track_id: str) -> str:
 
 
 # Configurable display timezone (defaults to America/New_York for EST/EDT with DST)
-DISPLAY_TIMEZONE = ZoneInfo(os.getenv("DISPLAY_TIMEZONE", "America/New_York"))
+_tz_name = os.getenv("DISPLAY_TIMEZONE", "America/New_York")
+try:
+    DISPLAY_TIMEZONE = ZoneInfo(_tz_name)
+except ZoneInfoNotFoundError:
+    raise RuntimeError(
+        f"Invalid DISPLAY_TIMEZONE '{_tz_name}'. "
+        f"Use an IANA timezone name like 'America/New_York' or 'Europe/London'."
+    )
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
