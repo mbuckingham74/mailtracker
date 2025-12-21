@@ -297,3 +297,26 @@ tr.opened:hover {
 .track-metadata p:last-child {
     margin-bottom: 0;
 }
+
+/* Multi-recipient grouping */
+.group-header {
+    background: #f0f4f8;
+    font-weight: 500;
+}
+
+.group-header:hover {
+    background: #e4eaf0;
+}
+
+.group-member td {
+    border-left: 3px solid #3498db;
+}
+
+.group-member td.indent {
+    padding-left: 2rem;
+}
+
+.recipient-count {
+    color: #7f8c8d;
+    font-style: italic;
+}

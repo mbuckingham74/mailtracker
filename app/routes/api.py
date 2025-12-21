@@ -26,6 +26,7 @@ class TrackCreate(BaseModel):
     recipient: Optional[str] = None
     subject: Optional[str] = None
     notes: Optional[str] = None
+    message_group_id: Optional[str] = None  # Groups multiple recipients from same email
 
 
 class OpenResponse(BaseModel):
@@ -46,6 +47,7 @@ class TrackResponse(BaseModel):
     recipient: Optional[str]
     subject: Optional[str]
     notes: Optional[str]
+    message_group_id: Optional[str] = None
     created_at: datetime
     open_count: int = 0
     pixel_url: str = ""
@@ -87,6 +89,7 @@ async def list_tracks(
             recipient=track.recipient,
             subject=track.subject,
             notes=track.notes,
+            message_group_id=track.message_group_id,
             created_at=track.created_at,
             open_count=open_count,
             pixel_url=f"https://mailtrack.tachyonfuture.com/p/{track.id}.gif"
@@ -107,7 +110,8 @@ async def create_track(
         id=track_id,
         recipient=track.recipient,
         subject=track.subject,
-        notes=track.notes
+        notes=track.notes,
+        message_group_id=track.message_group_id
     )
     
     db.add(new_track)
@@ -119,6 +123,7 @@ async def create_track(
         recipient=new_track.recipient,
         subject=new_track.subject,
         notes=new_track.notes,
+        message_group_id=new_track.message_group_id,
         created_at=new_track.created_at,
         open_count=0,
         pixel_url=f"https://mailtrack.tachyonfuture.com/p/{new_track.id}.gif"
@@ -150,6 +155,7 @@ async def get_track(
         recipient=track.recipient,
         subject=track.subject,
         notes=track.notes,
+        message_group_id=track.message_group_id,
         created_at=track.created_at,
         open_count=len(opens),
         pixel_url=f"https://mailtrack.tachyonfuture.com/p/{track.id}.gif",

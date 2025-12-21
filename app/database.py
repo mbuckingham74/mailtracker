@@ -14,11 +14,12 @@ Base = declarative_base()
 
 class TrackedEmail(Base):
     __tablename__ = "tracked_emails"
-    
+
     id = Column(String(36), primary_key=True)
     recipient = Column(String(255), nullable=True)
     subject = Column(String(500), nullable=True)
     notes = Column(Text, nullable=True)
+    message_group_id = Column(String(36), nullable=True, index=True)  # Groups multiple recipients from same email
     created_at = Column(DateTime, server_default=func.now())
 
 
