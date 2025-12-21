@@ -1,13 +1,14 @@
-from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi import APIRouter, Depends, HTTPException, Header, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, delete
 from pydantic import BaseModel
 from typing import Optional, List
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 import os
 
 from ..database import get_db, TrackedEmail, Open
+from ..proxy_detection import detect_proxy_type
 
 router = APIRouter(prefix="/api")
 
@@ -231,3 +232,63 @@ async def get_stats(
         total_opens=total_opens,
         tracks_with_opens=tracks_with_opens
     )
+
+
+class RecentOpenResponse(BaseModel):
+    """Response for recent opens endpoint - includes track details for notifications."""
+    open_id: int
+    opened_at: datetime
+    recipient: Optional[str]
+    subject: Optional[str]
+    country: Optional[str]
+    city: Optional[str]
+    track_id: str
+
+    class Config:
+        from_attributes = True
+
+
+@router.get("/opens/recent", response_model=List[RecentOpenResponse])
+async def get_recent_opens(
+    since: Optional[float] = Query(None, description="Unix timestamp to get opens after"),
+    db: AsyncSession = Depends(get_db),
+    auth: bool = Depends(verify_api_key)
+):
+    """
+    Get recent real opens (excluding proxy opens) since a given timestamp.
+    Used by Chrome extension for browser notifications.
+    """
+    # Build query for opens with their tracked emails
+    query = (
+        select(Open, TrackedEmail)
+        .join(TrackedEmail, Open.tracked_email_id == TrackedEmail.id)
+        .order_by(Open.opened_at.desc())
+    )
+
+    # Filter by timestamp if provided
+    if since is not None:
+        since_dt = datetime.fromtimestamp(since, tz=timezone.utc)
+        query = query.where(Open.opened_at > since_dt)
+
+    # Limit to last 50 opens max
+    query = query.limit(50)
+
+    result = await db.execute(query)
+    rows = result.all()
+
+    # Filter to real opens only (exclude proxy)
+    recent_opens = []
+    for open_record, tracked_email in rows:
+        proxy_type = detect_proxy_type(open_record.ip_address or "", open_record.user_agent or "")
+        if proxy_type is None:  # Real open
+            recent_opens.append(RecentOpenResponse(
+                open_id=open_record.id,
+                opened_at=open_record.opened_at,
+                recipient=tracked_email.recipient,
+                subject=tracked_email.subject,
+                country=open_record.country,
+                city=open_record.city,
+                track_id=tracked_email.id
+            ))
+
+    return recent_opens

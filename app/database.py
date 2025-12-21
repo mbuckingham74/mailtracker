@@ -23,6 +23,7 @@ class TrackedEmail(Base):
     notes = Column(Text, nullable=True)
     message_group_id = Column(String(36), nullable=True, index=True)  # Groups multiple recipients from same email
     created_at = Column(DateTime, server_default=func.now())
+    notified_at = Column(DateTime, nullable=True)  # When email notification was sent for first real open
 
 
 class Open(Base):

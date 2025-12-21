@@ -1,9 +1,11 @@
-from fastapi import APIRouter, Request, Depends
+from fastapi import APIRouter, Request, Depends, BackgroundTasks
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from ..database import get_db, TrackedEmail, Open
 from ..geoip import lookup_ip
+from ..proxy_detection import detect_proxy_type
+from ..notifications import send_open_notification, is_email_notifications_enabled
 import base64
 import logging
 from datetime import datetime, timezone
@@ -76,6 +78,26 @@ async def track_pixel(
                 )
                 db.add(open_record)
                 await db.commit()
+
+                # Check if this is a real open (not proxy) and send notification
+                proxy_type = detect_proxy_type(ip_address, user_agent)
+                if proxy_type is None and tracked_email.notified_at is None:
+                    # This is the first real open - send notification
+                    if is_email_notifications_enabled():
+                        try:
+                            send_open_notification(
+                                recipient=tracked_email.recipient or "Unknown",
+                                subject=tracked_email.subject or "(no subject)",
+                                opened_at=open_record.opened_at,
+                                country=country,
+                                city=city,
+                                track_id=tracking_id
+                            )
+                            # Mark as notified
+                            tracked_email.notified_at = datetime.now(timezone.utc)
+                            await db.commit()
+                        except Exception as notify_error:
+                            logger.error(f"Failed to send notification for {tracking_id}: {notify_error}")
     except Exception as e:
         # Log the error but don't break pixel delivery
         logger.exception(f"Failed to record open for tracking_id={tracking_id}: {e}")
