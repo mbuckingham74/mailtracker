@@ -320,3 +320,40 @@ tr.opened:hover {
     color: #7f8c8d;
     font-style: italic;
 }
+
+/* Proxy detection badges */
+.proxy-badge {
+    display: inline-block;
+    font-size: 0.7rem;
+    padding: 0.15rem 0.4rem;
+    border-radius: 3px;
+    margin-left: 0.5rem;
+    font-weight: 500;
+    vertical-align: middle;
+}
+
+.proxy-badge.apple {
+    background: #f0f0f0;
+    color: #666;
+    border: 1px solid #ccc;
+}
+
+.proxy-badge.google {
+    background: #e8f0fe;
+    color: #1a73e8;
+    border: 1px solid #c2d7f9;
+}
+
+.proxy-open {
+    opacity: 0.6;
+}
+
+.proxy-open:hover {
+    opacity: 1;
+}
+
+.proxy-count {
+    color: #999;
+    font-size: 0.85em;
+    font-weight: normal;
+}

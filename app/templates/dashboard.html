@@ -19,24 +19,34 @@
         {% for item in tracks %}
         {% if item.is_group %}
         {# Group header row #}
-        <tr class="group-header {% if item.total_opens > 0 %}opened{% endif %}">
+        <tr class="group-header {% if item.total_real_opens > 0 %}opened{% endif %}">
             <td>
                 <span class="recipient-count">{{ item.recipients|length }} recipients</span>
             </td>
             <td>{{ item.subject or '-' }}</td>
             <td>{{ item.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
-            <td class="open-count">{{ item.total_opens }}</td>
-            <td>{{ item.first_open.strftime('%Y-%m-%d %H:%M') if item.first_open else '-' }}</td>
+            <td class="open-count">
+                {{ item.total_real_opens }}
+                {% if item.total_opens != item.total_real_opens %}
+                <span class="proxy-count" title="{{ item.total_opens - item.total_real_opens }} proxy opens">(+{{ item.total_opens - item.total_real_opens }})</span>
+                {% endif %}
+            </td>
+            <td>{{ item.first_real_open.strftime('%Y-%m-%d %H:%M') if item.first_real_open else '-' }}</td>
             <td></td>
         </tr>
         {# Individual recipient rows #}
         {% for recipient in item.recipients %}
-        <tr class="group-member {% if recipient.open_count > 0 %}opened{% endif %}">
+        <tr class="group-member {% if recipient.real_open_count > 0 %}opened{% endif %}">
             <td class="indent">{{ recipient.track.recipient or '-' }}</td>
             <td></td>
             <td></td>
-            <td class="open-count">{{ recipient.open_count }}</td>
-            <td>{{ recipient.first_open.strftime('%Y-%m-%d %H:%M') if recipient.first_open else '-' }}</td>
+            <td class="open-count">
+                {{ recipient.real_open_count }}
+                {% if recipient.open_count != recipient.real_open_count %}
+                <span class="proxy-count" title="{{ recipient.open_count - recipient.real_open_count }} proxy opens">(+{{ recipient.open_count - recipient.real_open_count }})</span>
+                {% endif %}
+            </td>
+            <td>{{ recipient.first_real_open.strftime('%Y-%m-%d %H:%M') if recipient.first_real_open else '-' }}</td>
             <td>
                 <a href="/detail/{{ recipient.track.id }}" class="btn btn-sm">View</a>
             </td>
@@ -44,12 +54,17 @@
         {% endfor %}
         {% else %}
         {# Single track (ungrouped) #}
-        <tr class="{% if item.open_count > 0 %}opened{% endif %}">
+        <tr class="{% if item.real_open_count > 0 %}opened{% endif %}">
             <td>{{ item.track.recipient or '-' }}</td>
             <td>{{ item.track.subject or '-' }}</td>
             <td>{{ item.track.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
-            <td class="open-count">{{ item.open_count }}</td>
-            <td>{{ item.first_open.strftime('%Y-%m-%d %H:%M') if item.first_open else '-' }}</td>
+            <td class="open-count">
+                {{ item.real_open_count }}
+                {% if item.open_count != item.real_open_count %}
+                <span class="proxy-count" title="{{ item.open_count - item.real_open_count }} proxy opens">(+{{ item.open_count - item.real_open_count }})</span>
+                {% endif %}
+            </td>
+            <td>{{ item.first_real_open.strftime('%Y-%m-%d %H:%M') if item.first_real_open else '-' }}</td>
             <td>
                 <a href="/detail/{{ item.track.id }}" class="btn btn-sm">View</a>
             </td>

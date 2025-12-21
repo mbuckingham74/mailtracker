@@ -6,11 +6,62 @@ from sqlalchemy import select, func, delete
 from starlette.middleware.sessions import SessionMiddleware
 import uuid
 import os
+import ipaddress
 
 from ..database import get_db, TrackedEmail, Open
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
+
+# Apple Mail Privacy Protection and other proxy IP ranges
+APPLE_IP_RANGES = [
+    ipaddress.ip_network('17.0.0.0/8'),      # Apple's primary range
+    ipaddress.ip_network('104.28.0.0/16'),   # Cloudflare (used by Apple)
+]
+
+GOOGLE_PROXY_RANGES = [
+    ipaddress.ip_network('66.102.0.0/20'),   # Google
+    ipaddress.ip_network('66.249.64.0/19'),  # Googlebot
+    ipaddress.ip_network('72.14.192.0/18'),  # Google
+    ipaddress.ip_network('74.125.0.0/16'),   # Google (includes image proxy)
+    ipaddress.ip_network('209.85.128.0/17'), # Google
+]
+
+
+def detect_proxy_type(ip_str: str, user_agent: str = "") -> str | None:
+    """Detect if an IP is from a known email proxy service."""
+    if not ip_str:
+        return None
+
+    try:
+        ip = ipaddress.ip_address(ip_str)
+
+        # Check Apple ranges
+        for network in APPLE_IP_RANGES:
+            if ip in network:
+                return "apple"
+
+        # Check Google ranges
+        for network in GOOGLE_PROXY_RANGES:
+            if ip in network:
+                return "google"
+
+        # Also check user agent for proxy indicators
+        if user_agent:
+            ua_lower = user_agent.lower()
+            if "googleimageproxy" in ua_lower or "ggpht.com" in ua_lower:
+                return "google"
+            if "apple" in ua_lower and "mail" in ua_lower:
+                return "apple"
+
+    except ValueError:
+        pass
+
+    return None
+
+
+# Make the function available in templates
+templates.env.globals["detect_proxy_type"] = detect_proxy_type
 
 DASHBOARD_USERNAME = os.getenv("DASHBOARD_USERNAME", "admin")
 DASHBOARD_PASSWORD = os.getenv("DASHBOARD_PASSWORD", "changeme")
@@ -62,20 +113,28 @@ async def dashboard(request: Request, db: AsyncSession = Depends(get_db)):
     ungrouped = []  # tracks without group_id
 
     for track in tracks:
-        count_result = await db.execute(
-            select(func.count(Open.id)).where(Open.tracked_email_id == track.id)
+        # Get all opens for this track
+        opens_result = await db.execute(
+            select(Open).where(Open.tracked_email_id == track.id).order_by(Open.opened_at.asc())
         )
-        open_count = count_result.scalar() or 0
+        opens = opens_result.scalars().all()
 
-        first_open_result = await db.execute(
-            select(Open.opened_at).where(Open.tracked_email_id == track.id).order_by(Open.opened_at.asc()).limit(1)
-        )
-        first_open = first_open_result.scalar_one_or_none()
+        open_count = len(opens)
+        # Count real opens (excluding proxy)
+        real_opens = [o for o in opens if not detect_proxy_type(o.ip_address, o.user_agent or '')]
+        real_open_count = len(real_opens)
+
+        # First open (any)
+        first_open = opens[0].opened_at if opens else None
+        # First real open (non-proxy)
+        first_real_open = real_opens[0].opened_at if real_opens else None
 
         track_data = {
             "track": track,
             "open_count": open_count,
-            "first_open": first_open
+            "real_open_count": real_open_count,
+            "first_open": first_open,
+            "first_real_open": first_real_open
         }
 
         if track.message_group_id:
@@ -105,7 +164,9 @@ async def dashboard(request: Request, db: AsyncSession = Depends(get_db)):
             "created_at": group_tracks[0]["track"].created_at,
             "recipients": group_tracks,
             "total_opens": sum(t["open_count"] for t in group_tracks),
-            "first_open": min((t["first_open"] for t in group_tracks if t["first_open"]), default=None)
+            "total_real_opens": sum(t["real_open_count"] for t in group_tracks),
+            "first_open": min((t["first_open"] for t in group_tracks if t["first_open"]), default=None),
+            "first_real_open": min((t["first_real_open"] for t in group_tracks if t["first_real_open"]), default=None)
         })
 
     # Add ungrouped tracks

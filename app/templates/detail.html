@@ -25,9 +25,17 @@
     </thead>
     <tbody>
         {% for open in opens %}
-        <tr>
+        {% set proxy_type = detect_proxy_type(open.ip_address, open.user_agent or '') %}
+        <tr class="{% if proxy_type %}proxy-open{% endif %}">
             <td>{{ open.opened_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
-            <td>{{ open.ip_address or '-' }}</td>
+            <td>
+                {{ open.ip_address or '-' }}
+                {% if proxy_type == 'apple' %}
+                <span class="proxy-badge apple" title="Apple Mail Privacy Protection - automated prefetch, not a real open">Apple</span>
+                {% elif proxy_type == 'google' %}
+                <span class="proxy-badge google" title="Gmail Image Proxy - may be cached">Gmail</span>
+                {% endif %}
+            </td>
             <td class="user-agent">{{ open.user_agent[:80] if open.user_agent else '-' }}{% if open.user_agent and open.user_agent|length > 80 %}...{% endif %}</td>
             <td>{{ open.city or '' }}{% if open.city and open.country %}, {% endif %}{{ open.country or '-' }}</td>
         </tr>
