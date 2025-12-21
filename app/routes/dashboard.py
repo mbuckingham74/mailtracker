@@ -12,6 +12,16 @@ from urllib.parse import quote
 
 from ..database import get_db, TrackedEmail, Open
 
+BASE_URL = os.getenv("BASE_URL", "").rstrip("/")
+
+
+def get_pixel_url(track_id: str) -> str:
+    """Generate pixel URL for a track. Requires BASE_URL to be configured."""
+    if not BASE_URL:
+        return f"/p/{track_id}.gif"
+    return f"{BASE_URL}/p/{track_id}.gif"
+
+
 # EST timezone (UTC-5)
 EST = timezone(timedelta(hours=-5))
 
@@ -284,7 +294,7 @@ async def detail_page(request: Request, track_id: str, db: AsyncSession = Depend
     # Reverse for display (most recent first)
     opens = list(reversed(opens_asc))
 
-    pixel_url = f"https://mailtrack.tachyonfuture.com/p/{track.id}.gif"
+    pixel_url = get_pixel_url(track.id)
     html_snippet = f'<img src="{pixel_url}" width="1" height="1" style="display:none" alt="" />'
 
     # Build Gmail search URL to find the original sent email
