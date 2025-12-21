@@ -7,8 +7,8 @@
 <div class="email-list">
     {% for item in tracks %}
     {% if item.is_group %}
-    {# Grouped email with multiple recipients #}
-    <div class="email-row {% if item.total_real_opens > 0 %}has-opens{% endif %}" data-group-id="{{ item.group_id }}">
+    {# Grouped email with multiple recipients - link to first recipient's detail #}
+    <a href="/detail/{{ item.recipients[0].track.id }}" class="email-row {% if item.total_real_opens > 0 %}has-opens{% endif %}">
         <div class="email-main">
             <div class="email-recipients">
                 {% for recipient in item.recipients %}
@@ -42,30 +42,7 @@
             <div class="last-open">Opened {{ to_est(item.first_real_open).strftime('%b %d') }} at {{ to_est(item.first_real_open).strftime('%-I:%M %p') }} EST</div>
             {% endif %}
         </div>
-        <div class="email-actions">
-            <button class="expand-btn" onclick="toggleGroup('{{ item.group_id }}')" title="Show recipients">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="12" cy="12" r="1"></circle>
-                    <circle cx="12" cy="5" r="1"></circle>
-                    <circle cx="12" cy="19" r="1"></circle>
-                </svg>
-            </button>
-        </div>
-    </div>
-    {# Expandable recipient details #}
-    <div class="recipient-details" id="group-{{ item.group_id }}" style="display: none;">
-        {% for recipient in item.recipients %}
-        <a href="/detail/{{ recipient.track.id }}" class="recipient-row clickable {% if recipient.real_open_count > 0 %}has-opens{% endif %}">
-            <div class="recipient-email">{{ recipient.track.recipient or '-' }}</div>
-            <div class="recipient-stats">
-                {{ recipient.real_open_count }} open{{ 's' if recipient.real_open_count != 1 else '' }}
-                {% if recipient.first_real_open %}
-                <span class="recipient-time">{{ to_est(recipient.first_real_open).strftime('%b %d at %-I:%M %p') }} EST</span>
-                {% endif %}
-            </div>
-        </a>
-        {% endfor %}
-    </div>
+    </a>
     {% else %}
     {# Single recipient email #}
     <a href="/detail/{{ item.track.id }}" class="email-row clickable {% if item.real_open_count > 0 %}has-opens{% endif %}">
@@ -105,19 +82,6 @@
     {% endfor %}
 </div>
 
-<script>
-function toggleGroup(groupId) {
-    const details = document.getElementById('group-' + groupId);
-    const row = document.querySelector(`[data-group-id="${groupId}"]`);
-    if (details.style.display === 'none') {
-        details.style.display = 'block';
-        row.classList.add('expanded');
-    } else {
-        details.style.display = 'none';
-        row.classList.remove('expanded');
-    }
-}
-</script>
 {% else %}
 <p class="empty">No tracked emails yet. <a href="/create">Create your first one</a>.</p>
 {% endif %}
