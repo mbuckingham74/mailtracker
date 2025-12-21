@@ -7,7 +7,8 @@ from starlette.middleware.sessions import SessionMiddleware
 import uuid
 import os
 import ipaddress
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from urllib.parse import quote
 
 from ..database import get_db, TrackedEmail, Open
@@ -22,8 +23,15 @@ def get_pixel_url(track_id: str) -> str:
     return f"{BASE_URL}/p/{track_id}.gif"
 
 
-# EST timezone (UTC-5)
-EST = timezone(timedelta(hours=-5))
+# Configurable display timezone (defaults to America/New_York for EST/EDT with DST)
+_tz_name = os.getenv("DISPLAY_TIMEZONE", "America/New_York")
+try:
+    DISPLAY_TIMEZONE = ZoneInfo(_tz_name)
+except ZoneInfoNotFoundError:
+    raise RuntimeError(
+        f"Invalid DISPLAY_TIMEZONE '{_tz_name}'. "
+        f"Use an IANA timezone name like 'America/New_York' or 'Europe/London'."
+    )
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
@@ -75,18 +83,18 @@ def detect_proxy_type(ip_str: str, user_agent: str = "") -> str | None:
     return None
 
 
-def to_est(dt):
-    """Convert a datetime to EST timezone."""
+def to_local(dt):
+    """Convert a datetime to the configured display timezone."""
     if dt is None:
         return None
     if dt.tzinfo is None:
-        # Assume UTC if naive
+        # Assume UTC if naive (MySQL stores in UTC)
         dt = dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(EST)
+    return dt.astimezone(DISPLAY_TIMEZONE)
 
 # Make functions available in templates
 templates.env.globals["detect_proxy_type"] = detect_proxy_type
-templates.env.globals["to_est"] = to_est
+templates.env.globals["to_local"] = to_local
 
 DASHBOARD_USERNAME = os.getenv("DASHBOARD_USERNAME", "admin")
 DASHBOARD_PASSWORD = os.getenv("DASHBOARD_PASSWORD", "changeme")

@@ -18,7 +18,7 @@
     <p class="delivery-info-detail">
         <span class="delivery-icon">📬</span>
         <strong>Delivered to {{ 'iCloud' if first_proxy_type == 'apple' else 'Gmail' }}:</strong>
-        {{ to_est(first_proxy_open).strftime('%b %d, %Y at %-I:%M %p') }} EST
+        {{ to_local(first_proxy_open).strftime('%b %d, %Y at %-I:%M %p %Z') }}
     </p>
     {% endif %}
     <p><strong>Real Opens:</strong> {{ real_open_count }}</p>
