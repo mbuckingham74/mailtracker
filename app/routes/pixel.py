@@ -84,6 +84,11 @@ async def track_pixel(
                 if proxy_type is None and tracked_email.notified_at is None:
                     # This is the first real open - send notification
                     if is_email_notifications_enabled():
+                        # Mark as notified FIRST to prevent race conditions
+                        # (do this before the blocking SMTP call)
+                        tracked_email.notified_at = datetime.now(timezone.utc)
+                        await db.commit()
+
                         try:
                             send_open_notification(
                                 recipient=tracked_email.recipient or "Unknown",
@@ -93,9 +98,6 @@ async def track_pixel(
                                 city=city,
                                 track_id=tracking_id
                             )
-                            # Mark as notified
-                            tracked_email.notified_at = datetime.now(timezone.utc)
-                            await db.commit()
                         except Exception as notify_error:
                             logger.error(f"Failed to send notification for {tracking_id}: {notify_error}")
     except Exception as e:
