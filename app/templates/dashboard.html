@@ -12,9 +12,15 @@
         <div class="email-main">
             <div class="email-recipients">
                 {% for recipient in item.recipients %}
-                <span class="recipient-pill {% if recipient.real_open_count > 0 %}opened{% endif %}" title="{{ recipient.real_open_count }} opens">
-                    {{ recipient.track.recipient.split('@')[0] if recipient.track.recipient else 'Unknown' }}
+                    {% if recipient.track.recipient %}
+                        {% for email in recipient.track.recipient.split(',') %}
+                <span class="recipient-pill {% if recipient.real_open_count > 0 %}opened{% endif %}" title="{{ email.strip() }}">
+                    {{ email.strip().split('@')[0] }}
                 </span>
+                        {% endfor %}
+                    {% else %}
+                <span class="recipient-pill">Unknown</span>
+                    {% endif %}
                 {% endfor %}
             </div>
             <div class="email-subject">{{ item.subject or '(no subject)' }}</div>
