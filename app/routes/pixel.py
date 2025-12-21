@@ -5,6 +5,7 @@ from sqlalchemy import select
 from ..database import get_db, TrackedEmail, Open
 from ..geoip import lookup_ip
 import base64
+from datetime import datetime, timezone, timedelta
 
 router = APIRouter()
 
@@ -12,6 +13,10 @@ router = APIRouter()
 PIXEL_GIF = base64.b64decode(
     "R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
 )
+
+# Minimum seconds after track creation before opens are counted
+# This filters out the sender's browser loading the pixel during send
+MIN_OPEN_DELAY_SECONDS = 10
 
 @router.get("/p/{tracking_id}.gif")
 async def track_pixel(
@@ -30,29 +35,43 @@ async def track_pixel(
         tracked_email = result.scalar_one_or_none()
 
         if tracked_email:
-            # Get client info
-            ip_address = request.headers.get("X-Real-IP") or request.headers.get("X-Forwarded-For") or request.client.host
-            # Handle comma-separated list of IPs (from proxies)
-            if ip_address and "," in ip_address:
-                ip_address = ip_address.split(",")[0].strip()
+            # Filter out opens that happen too quickly after track creation
+            # This is the sender's browser loading the pixel, not a recipient
+            now = datetime.now(timezone.utc)
+            # Handle naive datetime from DB
+            created_at = tracked_email.created_at
+            if created_at.tzinfo is None:
+                created_at = created_at.replace(tzinfo=timezone.utc)
 
-            user_agent = request.headers.get("User-Agent", "")
-            referer = request.headers.get("Referer", "")
+            seconds_since_creation = (now - created_at).total_seconds()
 
-            # GeoIP lookup
-            country, city = lookup_ip(ip_address)
+            if seconds_since_creation < MIN_OPEN_DELAY_SECONDS:
+                # Too soon - this is likely the sender's browser, ignore it
+                pass
+            else:
+                # Get client info
+                ip_address = request.headers.get("X-Real-IP") or request.headers.get("X-Forwarded-For") or request.client.host
+                # Handle comma-separated list of IPs (from proxies)
+                if ip_address and "," in ip_address:
+                    ip_address = ip_address.split(",")[0].strip()
 
-            # Log the open
-            open_record = Open(
-                tracked_email_id=tracking_id,
-                ip_address=ip_address,
-                user_agent=user_agent,
-                referer=referer,
-                country=country,
-                city=city
-            )
-            db.add(open_record)
-            await db.commit()
+                user_agent = request.headers.get("User-Agent", "")
+                referer = request.headers.get("Referer", "")
+
+                # GeoIP lookup
+                country, city = lookup_ip(ip_address)
+
+                # Log the open
+                open_record = Open(
+                    tracked_email_id=tracking_id,
+                    ip_address=ip_address,
+                    user_agent=user_agent,
+                    referer=referer,
+                    country=country,
+                    city=city
+                )
+                db.add(open_record)
+                await db.commit()
     except Exception:
         # Silently fail - don't break pixel delivery
         pass
