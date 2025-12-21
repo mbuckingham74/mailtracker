@@ -45,11 +45,14 @@ async def track_pixel(
                 created_at = created_at.replace(tzinfo=timezone.utc)
 
             seconds_since_creation = (now - created_at).total_seconds()
+            print(f"PIXEL DEBUG: track={tracking_id}, created={created_at}, now={now}, diff={seconds_since_creation}s")
 
             if seconds_since_creation < MIN_OPEN_DELAY_SECONDS:
                 # Too soon - this is likely the sender's browser, ignore it
+                print(f"PIXEL DEBUG: FILTERED - too soon ({seconds_since_creation}s < {MIN_OPEN_DELAY_SECONDS}s)")
                 pass
             else:
+                print(f"PIXEL DEBUG: RECORDING open ({seconds_since_creation}s >= {MIN_OPEN_DELAY_SECONDS}s)")
                 # Get client info
                 ip_address = request.headers.get("X-Real-IP") or request.headers.get("X-Forwarded-For") or request.client.host
                 # Handle comma-separated list of IPs (from proxies)
