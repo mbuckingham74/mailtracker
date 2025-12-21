@@ -13,12 +13,12 @@ router = APIRouter(prefix="/api")
 
 API_KEY = os.getenv("API_KEY", "changeme")
 BASE_URL = os.getenv("BASE_URL", "").rstrip("/")
+if not BASE_URL:
+    raise RuntimeError("Required environment variable BASE_URL is not set (e.g., https://mailtrack.example.com)")
 
 
 def get_pixel_url(track_id: str) -> str:
-    """Generate pixel URL for a track. Requires BASE_URL to be configured."""
-    if not BASE_URL:
-        return f"/p/{track_id}.gif"
+    """Generate absolute pixel URL for a track."""
     return f"{BASE_URL}/p/{track_id}.gif"
 
 
