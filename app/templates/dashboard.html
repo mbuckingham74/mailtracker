@@ -25,21 +25,21 @@
             </div>
             <div class="email-subject">{{ item.subject or '(no subject)' }}</div>
             <div class="email-meta">
-                Sent on {{ to_est(item.created_at).strftime('%b %d, %Y') }} at {{ to_est(item.created_at).strftime('%-I:%M %p') }} EST
+                Sent on {{ to_local(item.created_at).strftime('%b %d, %Y at %-I:%M %p %Z') }}
             </div>
         </div>
         <div class="email-stats">
             {% if item.first_proxy_open %}
             <div class="delivery-info">
                 <span class="delivery-icon">📬</span>
-                Delivered to {{ 'iCloud' if item.first_proxy_type == 'apple' else 'Gmail' }} at {{ to_est(item.first_proxy_open).strftime('%-I:%M %p') }} EST
+                Delivered to {{ 'iCloud' if item.first_proxy_type == 'apple' else 'Gmail' }} at {{ to_local(item.first_proxy_open).strftime('%-I:%M %p %Z') }}
             </div>
             {% endif %}
             <div class="opens-count">
                 {{ item.total_real_opens }} open{{ 's' if item.total_real_opens != 1 else '' }}
             </div>
             {% if item.first_real_open %}
-            <div class="last-open">Opened {{ to_est(item.first_real_open).strftime('%b %d') }} at {{ to_est(item.first_real_open).strftime('%-I:%M %p') }} EST</div>
+            <div class="last-open">Opened {{ to_local(item.first_real_open).strftime('%b %d at %-I:%M %p %Z') }}</div>
             {% endif %}
         </div>
     </a>
@@ -60,21 +60,21 @@
             </div>
             <div class="email-subject">{{ item.track.subject or '(no subject)' }}</div>
             <div class="email-meta">
-                Sent on {{ to_est(item.track.created_at).strftime('%b %d, %Y') }} at {{ to_est(item.track.created_at).strftime('%-I:%M %p') }} EST
+                Sent on {{ to_local(item.track.created_at).strftime('%b %d, %Y at %-I:%M %p %Z') }}
             </div>
         </div>
         <div class="email-stats">
             {% if item.first_proxy_open %}
             <div class="delivery-info">
                 <span class="delivery-icon">📬</span>
-                Delivered to {{ 'iCloud' if item.first_proxy_type == 'apple' else 'Gmail' }} at {{ to_est(item.first_proxy_open).strftime('%-I:%M %p') }} EST
+                Delivered to {{ 'iCloud' if item.first_proxy_type == 'apple' else 'Gmail' }} at {{ to_local(item.first_proxy_open).strftime('%-I:%M %p %Z') }}
             </div>
             {% endif %}
             <div class="opens-count">
                 {{ item.real_open_count }} open{{ 's' if item.real_open_count != 1 else '' }}
             </div>
             {% if item.first_real_open %}
-            <div class="last-open">Opened {{ to_est(item.first_real_open).strftime('%b %d') }} at {{ to_est(item.first_real_open).strftime('%-I:%M %p') }} EST</div>
+            <div class="last-open">Opened {{ to_local(item.first_real_open).strftime('%b %d at %-I:%M %p %Z') }}</div>
             {% endif %}
         </div>
     </a>

@@ -5,7 +5,7 @@ from sqlalchemy import select
 from ..database import get_db, TrackedEmail, Open
 from ..geoip import lookup_ip
 import base64
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 
 router = APIRouter()
 
