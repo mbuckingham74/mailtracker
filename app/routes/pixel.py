@@ -67,6 +67,15 @@ async def track_pixel(
                 # GeoIP lookup
                 country, city = lookup_ip(ip_address)
 
+                # Capture values BEFORE any commits (SQLAlchemy expires objects after commit)
+                email_recipient = tracked_email.recipient or "Unknown"
+                email_subject = tracked_email.subject or "(no subject)"
+                should_notify = (
+                    tracked_email.notified_at is None and
+                    is_email_notifications_enabled() and
+                    detect_proxy_type(ip_address, user_agent) is None  # Real open, not proxy
+                )
+
                 # Log the open
                 open_record = Open(
                     tracked_email_id=tracking_id,
@@ -77,29 +86,26 @@ async def track_pixel(
                     city=city
                 )
                 db.add(open_record)
+
+                # If this is a real open and we should notify, mark as notified first
+                if should_notify:
+                    tracked_email.notified_at = now
+
                 await db.commit()
 
-                # Check if this is a real open (not proxy) and send notification
-                proxy_type = detect_proxy_type(ip_address, user_agent)
-                if proxy_type is None and tracked_email.notified_at is None:
-                    # This is the first real open - send notification
-                    if is_email_notifications_enabled():
-                        # Mark as notified FIRST to prevent race conditions
-                        # (do this before the blocking SMTP call)
-                        tracked_email.notified_at = datetime.now(timezone.utc)
-                        await db.commit()
-
-                        try:
-                            send_open_notification(
-                                recipient=tracked_email.recipient or "Unknown",
-                                subject=tracked_email.subject or "(no subject)",
-                                opened_at=open_record.opened_at,
-                                country=country,
-                                city=city,
-                                track_id=tracking_id
-                            )
-                        except Exception as notify_error:
-                            logger.error(f"Failed to send notification for {tracking_id}: {notify_error}")
+                # Send notification after commit (blocking SMTP call)
+                if should_notify:
+                    try:
+                        send_open_notification(
+                            recipient=email_recipient,
+                            subject=email_subject,
+                            opened_at=now,
+                            country=country,
+                            city=city,
+                            track_id=tracking_id
+                        )
+                    except Exception as notify_error:
+                        logger.error(f"Failed to send notification for {tracking_id}: {notify_error}")
     except Exception as e:
         # Log the error but don't break pixel delivery
         logger.exception(f"Failed to record open for tracking_id={tracking_id}: {e}")
