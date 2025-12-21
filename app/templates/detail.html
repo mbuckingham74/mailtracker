@@ -16,19 +16,6 @@
     <p><strong>Total Opens:</strong> {{ opens|length }}</p>
 </div>
 
-<h2>Pixel Code</h2>
-<div class="code-block">
-    <p><strong>HTML (paste in email):</strong></p>
-    <pre><code>{{ html_snippet }}</code></pre>
-    <button onclick="navigator.clipboard.writeText('{{ html_snippet }}')" class="btn btn-sm">Copy HTML</button>
-</div>
-
-<div class="code-block">
-    <p><strong>Pixel URL:</strong></p>
-    <pre><code>{{ pixel_url }}</code></pre>
-    <button onclick="navigator.clipboard.writeText('{{ pixel_url }}')" class="btn btn-sm">Copy URL</button>
-</div>
-
 <h2>Opens ({{ opens|length }})</h2>
 {% if opens %}
 <table>
@@ -54,4 +41,18 @@
 {% else %}
 <p class="empty">No opens yet.</p>
 {% endif %}
+
+<details class="pixel-details">
+    <summary>Tracking Pixel Details</summary>
+    <div class="code-block">
+        <p><strong>HTML (paste in email):</strong></p>
+        <pre><code>{{ html_snippet }}</code></pre>
+        <button onclick="navigator.clipboard.writeText('{{ html_snippet }}')" class="btn btn-sm">Copy HTML</button>
+    </div>
+    <div class="code-block">
+        <p><strong>Pixel URL:</strong></p>
+        <pre><code>{{ pixel_url }}</code></pre>
+        <button onclick="navigator.clipboard.writeText('{{ pixel_url }}')" class="btn btn-sm">Copy URL</button>
+    </div>
+</details>
 {% endblock %}

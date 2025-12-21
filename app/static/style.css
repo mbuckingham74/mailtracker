@@ -258,3 +258,26 @@ tr.opened:hover {
     margin-bottom: 1rem;
     text-align: center;
 }
+
+/* Collapsible pixel details */
+.pixel-details {
+    margin-top: 2rem;
+}
+
+.pixel-details summary {
+    cursor: pointer;
+    padding: 1rem;
+    background: #ecf0f1;
+    border-radius: 4px;
+    font-weight: 500;
+    color: #7f8c8d;
+}
+
+.pixel-details summary:hover {
+    background: #e0e5e7;
+}
+
+.pixel-details[open] summary {
+    margin-bottom: 1rem;
+    border-radius: 4px 4px 0 0;
+}
