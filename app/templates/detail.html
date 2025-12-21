@@ -69,8 +69,8 @@
     </div>
     <div class="code-block">
         <p><strong>HTML (paste in email):</strong></p>
-        <pre><code>{{ html_snippet }}</code></pre>
-        <button onclick="navigator.clipboard.writeText('{{ html_snippet }}')" class="btn btn-sm">Copy HTML</button>
+        <pre><code id="html-snippet">{{ html_snippet }}</code></pre>
+        <button onclick="navigator.clipboard.writeText(document.getElementById('html-snippet').textContent)" class="btn btn-sm">Copy HTML</button>
     </div>
     <div class="code-block">
         <p><strong>Pixel URL:</strong></p>
