@@ -96,8 +96,10 @@ def to_local(dt):
 templates.env.globals["detect_proxy_type"] = detect_proxy_type
 templates.env.globals["to_local"] = to_local
 
-DASHBOARD_USERNAME = os.getenv("DASHBOARD_USERNAME", "admin")
-DASHBOARD_PASSWORD = os.getenv("DASHBOARD_PASSWORD", "changeme")
+DASHBOARD_USERNAME = os.getenv("DASHBOARD_USERNAME")
+DASHBOARD_PASSWORD = os.getenv("DASHBOARD_PASSWORD")
+if not DASHBOARD_USERNAME or not DASHBOARD_PASSWORD:
+    raise RuntimeError("Required environment variables DASHBOARD_USERNAME and DASHBOARD_PASSWORD are not set")
 
 
 def is_authenticated(request: Request) -> bool:

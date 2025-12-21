@@ -11,7 +11,10 @@ from ..database import get_db, TrackedEmail, Open
 
 router = APIRouter(prefix="/api")
 
-API_KEY = os.getenv("API_KEY", "changeme")
+API_KEY = os.getenv("API_KEY")
+if not API_KEY:
+    raise RuntimeError("Required environment variable API_KEY is not set")
+
 BASE_URL = os.getenv("BASE_URL", "").rstrip("/")
 if not BASE_URL:
     raise RuntimeError("Required environment variable BASE_URL is not set (e.g., https://mailtrack.example.com)")

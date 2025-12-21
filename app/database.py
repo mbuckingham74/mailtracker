@@ -4,7 +4,9 @@ from sqlalchemy import Column, String, Text, DateTime, Integer, ForeignKey
 from sqlalchemy.sql import func
 import os
 
-DATABASE_URL = os.getenv("DATABASE_URL", "mysql+aiomysql://root:password@localhost:3308/mailtrack")
+DATABASE_URL = os.getenv("DATABASE_URL")
+if not DATABASE_URL:
+    raise RuntimeError("Required environment variable DATABASE_URL is not set")
 
 engine = create_async_engine(DATABASE_URL, echo=False)
 async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
