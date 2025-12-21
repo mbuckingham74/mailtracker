@@ -1,11 +1,13 @@
 from fastapi import APIRouter, Request, Depends, Form, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, delete
 from starlette.middleware.sessions import SessionMiddleware
 import uuid
 import os
+import io
+import csv
 import ipaddress
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -335,8 +337,78 @@ async def detail_page(request: Request, track_id: str, db: AsyncSession = Depend
 async def delete_track(request: Request, track_id: str, db: AsyncSession = Depends(get_db)):
     if not is_authenticated(request):
         return RedirectResponse(url="/login", status_code=303)
-    
+
     await db.execute(delete(TrackedEmail).where(TrackedEmail.id == track_id))
     await db.commit()
-    
+
     return RedirectResponse(url="/", status_code=303)
+
+
+@router.get("/export")
+async def export_csv(request: Request, db: AsyncSession = Depends(get_db)):
+    """Export all tracking data as CSV with one row per open event."""
+    if not is_authenticated(request):
+        return RedirectResponse(url="/login", status_code=303)
+
+    # Query all tracked emails with their opens
+    result = await db.execute(
+        select(TrackedEmail).order_by(TrackedEmail.created_at.desc())
+    )
+    tracks = result.scalars().all()
+
+    # Build CSV in memory
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    # Header row
+    writer.writerow([
+        "email_id",
+        "recipient",
+        "subject",
+        "email_created_at",
+        "opened_at",
+        "ip_address",
+        "country",
+        "city",
+        "user_agent",
+        "proxy_type",
+        "is_real_open"
+    ])
+
+    # Data rows - one per open event
+    for track in tracks:
+        opens_result = await db.execute(
+            select(Open).where(Open.tracked_email_id == track.id).order_by(Open.opened_at.asc())
+        )
+        opens = opens_result.scalars().all()
+
+        email_created = to_local(track.created_at).strftime('%Y-%m-%d %H:%M:%S %Z') if track.created_at else ""
+
+        for open_event in opens:
+            proxy_type = detect_proxy_type(open_event.ip_address, open_event.user_agent or '')
+            opened_at = to_local(open_event.opened_at).strftime('%Y-%m-%d %H:%M:%S %Z') if open_event.opened_at else ""
+
+            writer.writerow([
+                track.id,
+                track.recipient or "",
+                track.subject or "",
+                email_created,
+                opened_at,
+                open_event.ip_address or "",
+                open_event.country or "",
+                open_event.city or "",
+                open_event.user_agent or "",
+                proxy_type or "",
+                "no" if proxy_type else "yes"
+            ])
+
+    # Prepare response
+    output.seek(0)
+    export_date = datetime.now(DISPLAY_TIMEZONE).strftime('%Y-%m-%d')
+    filename = f"mailtrack_export_{export_date}.csv"
+
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )

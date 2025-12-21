@@ -1,7 +1,10 @@
 {% extends "base.html" %}
 {% block title %}Dashboard - Mailtrack{% endblock %}
 {% block content %}
-<h1>Tracked Emails</h1>
+<div class="dashboard-header">
+    <h1>Tracked Emails</h1>
+    <a href="/export" class="btn btn-secondary">Export CSV</a>
+</div>
 
 {% if tracks %}
 <div class="email-list">
