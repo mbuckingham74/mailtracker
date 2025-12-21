@@ -29,14 +29,17 @@
             </div>
         </div>
         <div class="email-stats">
+            {% if item.first_proxy_open %}
+            <div class="delivery-info">
+                <span class="delivery-icon">📬</span>
+                Delivered to {{ 'iCloud' if item.first_proxy_type == 'apple' else 'Gmail' }} at {{ to_est(item.first_proxy_open).strftime('%-I:%M %p') }} EST
+            </div>
+            {% endif %}
             <div class="opens-count">
                 {{ item.total_real_opens }} open{{ 's' if item.total_real_opens != 1 else '' }}
-                {% if item.total_opens != item.total_real_opens %}
-                <span class="proxy-indicator" title="{{ item.total_opens - item.total_real_opens }} proxy opens">+{{ item.total_opens - item.total_real_opens }} proxy</span>
-                {% endif %}
             </div>
             {% if item.first_real_open %}
-            <div class="last-open">Last open on {{ to_est(item.first_real_open).strftime('%b %d, %Y') }} at {{ to_est(item.first_real_open).strftime('%-I:%M %p') }} EST</div>
+            <div class="last-open">Opened {{ to_est(item.first_real_open).strftime('%b %d') }} at {{ to_est(item.first_real_open).strftime('%-I:%M %p') }} EST</div>
             {% endif %}
         </div>
         <div class="email-actions">
@@ -85,14 +88,17 @@
             </div>
         </div>
         <div class="email-stats">
+            {% if item.first_proxy_open %}
+            <div class="delivery-info">
+                <span class="delivery-icon">📬</span>
+                Delivered to {{ 'iCloud' if item.first_proxy_type == 'apple' else 'Gmail' }} at {{ to_est(item.first_proxy_open).strftime('%-I:%M %p') }} EST
+            </div>
+            {% endif %}
             <div class="opens-count">
                 {{ item.real_open_count }} open{{ 's' if item.real_open_count != 1 else '' }}
-                {% if item.open_count != item.real_open_count %}
-                <span class="proxy-indicator" title="{{ item.open_count - item.real_open_count }} proxy opens">+{{ item.open_count - item.real_open_count }} proxy</span>
-                {% endif %}
             </div>
             {% if item.first_real_open %}
-            <div class="last-open">Last open on {{ to_est(item.first_real_open).strftime('%b %d, %Y') }} at {{ to_est(item.first_real_open).strftime('%-I:%M %p') }} EST</div>
+            <div class="last-open">Opened {{ to_est(item.first_real_open).strftime('%b %d') }} at {{ to_est(item.first_real_open).strftime('%-I:%M %p') }} EST</div>
             {% endif %}
         </div>
         <div class="email-actions">

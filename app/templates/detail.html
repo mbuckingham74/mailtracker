@@ -9,10 +9,18 @@
 </div>
 
 <div class="track-info">
-    <p><strong>Total Opens:</strong> {{ opens|length }}</p>
+    {% if first_proxy_open %}
+    <p class="delivery-info-detail">
+        <span class="delivery-icon">📬</span>
+        <strong>Delivered to {{ 'iCloud' if first_proxy_type == 'apple' else 'Gmail' }}:</strong>
+        {{ to_est(first_proxy_open).strftime('%b %d, %Y at %-I:%M %p') }} EST
+    </p>
+    {% endif %}
+    <p><strong>Real Opens:</strong> {{ real_open_count }}</p>
+    <p class="proxy-note"><strong>Total Opens (including proxy):</strong> {{ opens|length }}</p>
 </div>
 
-<h2>Opens ({{ opens|length }})</h2>
+<h2>All Opens ({{ opens|length }})</h2>
 {% if opens %}
 <table>
     <thead>

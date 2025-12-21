@@ -134,21 +134,34 @@ async def dashboard(request: Request, db: AsyncSession = Depends(get_db)):
         opens = opens_result.scalars().all()
 
         open_count = len(opens)
-        # Count real opens (excluding proxy)
-        real_opens = [o for o in opens if not detect_proxy_type(o.ip_address, o.user_agent or '')]
+        # Separate proxy opens from real opens
+        proxy_opens = []
+        real_opens = []
+        for o in opens:
+            proxy_type = detect_proxy_type(o.ip_address, o.user_agent or '')
+            if proxy_type:
+                proxy_opens.append((o, proxy_type))
+            else:
+                real_opens.append(o)
+
         real_open_count = len(real_opens)
 
         # First open (any)
         first_open = opens[0].opened_at if opens else None
         # First real open (non-proxy)
         first_real_open = real_opens[0].opened_at if real_opens else None
+        # First proxy open with type (for "Delivered to Gmail/iCloud" display)
+        first_proxy_open = proxy_opens[0][0].opened_at if proxy_opens else None
+        first_proxy_type = proxy_opens[0][1] if proxy_opens else None
 
         track_data = {
             "track": track,
             "open_count": open_count,
             "real_open_count": real_open_count,
             "first_open": first_open,
-            "first_real_open": first_real_open
+            "first_real_open": first_real_open,
+            "first_proxy_open": first_proxy_open,
+            "first_proxy_type": first_proxy_type
         }
 
         if track.message_group_id:
@@ -171,6 +184,9 @@ async def dashboard(request: Request, db: AsyncSession = Depends(get_db)):
     for group_id, group_tracks in sorted_groups:
         # Sort recipients within group by created_at
         group_tracks.sort(key=lambda x: x["track"].created_at)
+        # Get first proxy info from any recipient in the group
+        proxy_tracks = [(t["first_proxy_open"], t["first_proxy_type"]) for t in group_tracks if t["first_proxy_open"]]
+        first_proxy = min(proxy_tracks, key=lambda x: x[0]) if proxy_tracks else (None, None)
         tracks_with_counts.append({
             "is_group": True,
             "group_id": group_id,
@@ -180,7 +196,9 @@ async def dashboard(request: Request, db: AsyncSession = Depends(get_db)):
             "total_opens": sum(t["open_count"] for t in group_tracks),
             "total_real_opens": sum(t["real_open_count"] for t in group_tracks),
             "first_open": min((t["first_open"] for t in group_tracks if t["first_open"]), default=None),
-            "first_real_open": min((t["first_real_open"] for t in group_tracks if t["first_real_open"]), default=None)
+            "first_real_open": min((t["first_real_open"] for t in group_tracks if t["first_real_open"]), default=None),
+            "first_proxy_open": first_proxy[0],
+            "first_proxy_type": first_proxy[1]
         })
 
     # Add ungrouped tracks
@@ -242,19 +260,39 @@ async def detail_page(request: Request, track_id: str, db: AsyncSession = Depend
     if not track:
         raise HTTPException(status_code=404, detail="Track not found")
     
-    # Get opens
+    # Get opens (ascending for first proxy detection)
     opens_result = await db.execute(
-        select(Open).where(Open.tracked_email_id == track_id).order_by(Open.opened_at.desc())
+        select(Open).where(Open.tracked_email_id == track_id).order_by(Open.opened_at.asc())
     )
-    opens = opens_result.scalars().all()
-    
+    opens_asc = opens_result.scalars().all()
+
+    # Separate proxy and real opens
+    proxy_opens = []
+    real_opens = []
+    for o in opens_asc:
+        proxy_type = detect_proxy_type(o.ip_address, o.user_agent or '')
+        if proxy_type:
+            proxy_opens.append((o, proxy_type))
+        else:
+            real_opens.append(o)
+
+    # First proxy open info
+    first_proxy_open = proxy_opens[0][0].opened_at if proxy_opens else None
+    first_proxy_type = proxy_opens[0][1] if proxy_opens else None
+
+    # Reverse for display (most recent first)
+    opens = list(reversed(opens_asc))
+
     pixel_url = f"https://mailtrack.tachyonfuture.com/p/{track.id}.gif"
     html_snippet = f'<img src="{pixel_url}" width="1" height="1" style="display:none" alt="" />'
-    
+
     return templates.TemplateResponse("detail.html", {
         "request": request,
         "track": track,
         "opens": opens,
+        "real_open_count": len(real_opens),
+        "first_proxy_open": first_proxy_open,
+        "first_proxy_type": first_proxy_type,
         "pixel_url": pixel_url,
         "html_snippet": html_snippet
     })

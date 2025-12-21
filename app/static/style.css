@@ -492,3 +492,28 @@ tr.opened:hover {
     font-size: 0.85em;
     font-weight: normal;
 }
+
+/* Delivery info (proxy open as delivery confirmation) */
+.delivery-info {
+    font-size: 0.85rem;
+    color: #666;
+    margin-bottom: 0.25rem;
+}
+
+.delivery-icon {
+    margin-right: 0.25rem;
+}
+
+/* Detail page delivery info */
+.delivery-info-detail {
+    font-size: 1rem;
+    color: #27ae60;
+    margin-bottom: 0.75rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid #eee;
+}
+
+.proxy-note {
+    font-size: 0.9rem;
+    color: #888;
+}
