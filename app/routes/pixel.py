@@ -16,7 +16,8 @@ PIXEL_GIF = base64.b64decode(
 
 # Minimum seconds after track creation before opens are counted
 # This filters out the sender's browser loading the pixel during send
-MIN_OPEN_DELAY_SECONDS = 10
+# Set to 5 seconds - enough to filter instant browser loads but allow real opens
+MIN_OPEN_DELAY_SECONDS = 5
 
 @router.get("/p/{tracking_id}.gif")
 async def track_pixel(
