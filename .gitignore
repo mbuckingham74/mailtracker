@@ -10,7 +10,8 @@ ENV/
 # Environment
 .env
 .env.mysql
-Claude.md
+CLAUDE.md
+DEBUG*.md
 
 # IDE
 .idea/
