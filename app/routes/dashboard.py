@@ -248,39 +248,6 @@ async def dashboard(request: Request, filter: str = "all", db: AsyncSession = De
     })
 
 
-@router.get("/create", response_class=HTMLResponse)
-async def create_page(request: Request):
-    if not is_authenticated(request):
-        return RedirectResponse(url="/login", status_code=303)
-    return templates.TemplateResponse("create.html", {"request": request})
-
-
-@router.post("/create")
-async def create_track(
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-    recipient: str = Form(""),
-    subject: str = Form(""),
-    notes: str = Form("")
-):
-    if not is_authenticated(request):
-        return RedirectResponse(url="/login", status_code=303)
-    
-    track_id = str(uuid.uuid4())
-    
-    new_track = TrackedEmail(
-        id=track_id,
-        recipient=recipient or None,
-        subject=subject or None,
-        notes=notes or None
-    )
-    
-    db.add(new_track)
-    await db.commit()
-    
-    return RedirectResponse(url=f"/detail/{track_id}", status_code=303)
-
-
 @router.get("/detail/{track_id}", response_class=HTMLResponse)
 async def detail_page(request: Request, track_id: str, db: AsyncSession = Depends(get_db)):
     if not is_authenticated(request):
