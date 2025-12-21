@@ -12,6 +12,14 @@ from ..database import get_db, TrackedEmail, Open
 router = APIRouter(prefix="/api")
 
 API_KEY = os.getenv("API_KEY", "changeme")
+BASE_URL = os.getenv("BASE_URL", "").rstrip("/")
+if not BASE_URL:
+    raise RuntimeError("Required environment variable BASE_URL is not set (e.g., https://mailtrack.example.com)")
+
+
+def get_pixel_url(track_id: str) -> str:
+    """Generate absolute pixel URL for a track."""
+    return f"{BASE_URL}/p/{track_id}.gif"
 
 
 # Auth dependency
@@ -92,7 +100,7 @@ async def list_tracks(
             message_group_id=track.message_group_id,
             created_at=track.created_at,
             open_count=open_count,
-            pixel_url=f"https://mailtrack.tachyonfuture.com/p/{track.id}.gif"
+            pixel_url=get_pixel_url(track.id)
         ))
     
     return response
@@ -126,7 +134,7 @@ async def create_track(
         message_group_id=new_track.message_group_id,
         created_at=new_track.created_at,
         open_count=0,
-        pixel_url=f"https://mailtrack.tachyonfuture.com/p/{new_track.id}.gif"
+        pixel_url=get_pixel_url(new_track.id)
     )
 
 
@@ -158,7 +166,7 @@ async def get_track(
         message_group_id=track.message_group_id,
         created_at=track.created_at,
         open_count=len(opens),
-        pixel_url=f"https://mailtrack.tachyonfuture.com/p/{track.id}.gif",
+        pixel_url=get_pixel_url(track.id),
         opens=[OpenResponse.model_validate(o) for o in opens]
     )
 
