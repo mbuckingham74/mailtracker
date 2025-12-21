@@ -136,9 +136,13 @@ async def logout(request: Request):
 
 
 @router.get("/", response_class=HTMLResponse)
-async def dashboard(request: Request, db: AsyncSession = Depends(get_db)):
+async def dashboard(request: Request, filter: str = "all", db: AsyncSession = Depends(get_db)):
     if not is_authenticated(request):
         return RedirectResponse(url="/login", status_code=303)
+
+    # Validate filter parameter
+    if filter not in ("all", "opened", "unopened"):
+        filter = "all"
 
     result = await db.execute(
         select(TrackedEmail).order_by(TrackedEmail.created_at.desc())
@@ -187,6 +191,12 @@ async def dashboard(request: Request, db: AsyncSession = Depends(get_db)):
             "first_proxy_type": first_proxy_type
         }
 
+        # Apply filter (based on real opens, excluding proxy)
+        if filter == "opened" and real_open_count == 0:
+            continue
+        if filter == "unopened" and real_open_count > 0:
+            continue
+
         if track.message_group_id:
             if track.message_group_id not in groups:
                 groups[track.message_group_id] = []
@@ -233,7 +243,8 @@ async def dashboard(request: Request, db: AsyncSession = Depends(get_db)):
 
     return templates.TemplateResponse("dashboard.html", {
         "request": request,
-        "tracks": tracks_with_counts
+        "tracks": tracks_with_counts,
+        "filter": filter
     })
 
 

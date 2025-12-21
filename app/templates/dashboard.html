@@ -2,7 +2,14 @@
 {% block title %}Dashboard - Mailtrack{% endblock %}
 {% block content %}
 <div class="dashboard-header">
-    <h1>Tracked Emails</h1>
+    <div class="dashboard-left">
+        <h1>Tracked Emails</h1>
+        <select class="filter-dropdown" onchange="window.location.href='/?filter=' + this.value">
+            <option value="all" {% if filter == 'all' %}selected{% endif %}>All emails</option>
+            <option value="unopened" {% if filter == 'unopened' %}selected{% endif %}>Unopened emails</option>
+            <option value="opened" {% if filter == 'opened' %}selected{% endif %}>Opened emails</option>
+        </select>
+    </div>
     <a href="/export" class="btn btn-secondary">Export CSV</a>
 </div>
 
