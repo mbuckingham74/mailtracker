@@ -12,6 +12,14 @@ from .routes import pixel, api, dashboard
 from .geoip import init_geoip
 
 
+def _require_env(name: str) -> str:
+    """Get required environment variable or raise error at startup."""
+    value = os.getenv(name)
+    if not value:
+        raise RuntimeError(f"Required environment variable {name} is not set")
+    return value
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: Initialize GeoIP database
@@ -22,9 +30,14 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Mailtrack", docs_url=None, redoc_url=None, lifespan=lifespan)
 
-# Session middleware for dashboard auth
-SECRET_KEY = os.getenv("SECRET_KEY", "change-this-to-a-random-string")
-app.add_middleware(SessionMiddleware, secret_key=SECRET_KEY)
+# Session middleware for dashboard auth with secure cookie flags
+SECRET_KEY = _require_env("SECRET_KEY")
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=SECRET_KEY,
+    https_only=os.getenv("COOKIE_SECURE", "true").lower() == "true",
+    same_site="lax",
+)
 
 # Mount static files
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
