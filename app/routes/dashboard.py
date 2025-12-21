@@ -7,8 +7,12 @@ from starlette.middleware.sessions import SessionMiddleware
 import uuid
 import os
 import ipaddress
+from datetime import datetime, timezone, timedelta
 
 from ..database import get_db, TrackedEmail, Open
+
+# EST timezone (UTC-5)
+EST = timezone(timedelta(hours=-5))
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
@@ -60,8 +64,18 @@ def detect_proxy_type(ip_str: str, user_agent: str = "") -> str | None:
     return None
 
 
-# Make the function available in templates
+def to_est(dt):
+    """Convert a datetime to EST timezone."""
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        # Assume UTC if naive
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(EST)
+
+# Make functions available in templates
 templates.env.globals["detect_proxy_type"] = detect_proxy_type
+templates.env.globals["to_est"] = to_est
 
 DASHBOARD_USERNAME = os.getenv("DASHBOARD_USERNAME", "admin")
 DASHBOARD_PASSWORD = os.getenv("DASHBOARD_PASSWORD", "changeme")

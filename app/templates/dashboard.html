@@ -19,7 +19,7 @@
             </div>
             <div class="email-subject">{{ item.subject or '(no subject)' }}</div>
             <div class="email-meta">
-                Sent on {{ item.created_at.strftime('%b %d, %Y') }} at {{ item.created_at.strftime('%-I:%M %p') }}
+                Sent on {{ to_est(item.created_at).strftime('%b %d, %Y') }} at {{ to_est(item.created_at).strftime('%-I:%M %p') }} EST
             </div>
         </div>
         <div class="email-stats">
@@ -30,7 +30,7 @@
                 {% endif %}
             </div>
             {% if item.first_real_open %}
-            <div class="last-open">Last open on {{ item.first_real_open.strftime('%b %d, %Y') }} at {{ item.first_real_open.strftime('%-I:%M %p') }}</div>
+            <div class="last-open">Last open on {{ to_est(item.first_real_open).strftime('%b %d, %Y') }} at {{ to_est(item.first_real_open).strftime('%-I:%M %p') }} EST</div>
             {% endif %}
         </div>
         <div class="email-actions">
@@ -51,7 +51,7 @@
             <div class="recipient-stats">
                 {{ recipient.real_open_count }} open{{ 's' if recipient.real_open_count != 1 else '' }}
                 {% if recipient.first_real_open %}
-                <span class="recipient-time">{{ recipient.first_real_open.strftime('%b %d at %-I:%M %p') }}</span>
+                <span class="recipient-time">{{ to_est(recipient.first_real_open).strftime('%b %d at %-I:%M %p') }} EST</span>
                 {% endif %}
             </div>
             <a href="/detail/{{ recipient.track.id }}" class="btn btn-sm">View</a>
@@ -69,7 +69,7 @@
             </div>
             <div class="email-subject">{{ item.track.subject or '(no subject)' }}</div>
             <div class="email-meta">
-                Sent on {{ item.track.created_at.strftime('%b %d, %Y') }} at {{ item.track.created_at.strftime('%-I:%M %p') }}
+                Sent on {{ to_est(item.track.created_at).strftime('%b %d, %Y') }} at {{ to_est(item.track.created_at).strftime('%-I:%M %p') }} EST
             </div>
         </div>
         <div class="email-stats">
@@ -80,7 +80,7 @@
                 {% endif %}
             </div>
             {% if item.first_real_open %}
-            <div class="last-open">Last open on {{ item.first_real_open.strftime('%b %d, %Y') }} at {{ item.first_real_open.strftime('%-I:%M %p') }}</div>
+            <div class="last-open">Last open on {{ to_est(item.first_real_open).strftime('%b %d, %Y') }} at {{ to_est(item.first_real_open).strftime('%-I:%M %p') }} EST</div>
             {% endif %}
         </div>
         <div class="email-actions">
