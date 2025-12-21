@@ -9,10 +9,6 @@
 </div>
 
 <div class="track-info">
-    <p><strong>Recipient:</strong> {{ track.recipient or '-' }}</p>
-    <p><strong>Subject:</strong> {{ track.subject or '-' }}</p>
-    <p><strong>Notes:</strong> {{ track.notes or '-' }}</p>
-    <p><strong>Created:</strong> {{ track.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</p>
     <p><strong>Total Opens:</strong> {{ opens|length }}</p>
 </div>
 
@@ -44,6 +40,12 @@
 
 <details class="pixel-details">
     <summary>Tracking Pixel Details</summary>
+    <div class="track-metadata">
+        <p><strong>Recipient:</strong> {{ track.recipient or '-' }}</p>
+        <p><strong>Subject:</strong> {{ track.subject or '-' }}</p>
+        <p><strong>Notes:</strong> {{ track.notes or '-' }}</p>
+        <p><strong>Created:</strong> {{ track.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</p>
+    </div>
     <div class="code-block">
         <p><strong>HTML (paste in email):</strong></p>
         <pre><code>{{ html_snippet }}</code></pre>
