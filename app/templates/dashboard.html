@@ -4,14 +4,63 @@
 <div class="dashboard-header">
     <div class="dashboard-left">
         <h1>Tracked Emails</h1>
-        <select class="filter-dropdown" onchange="window.location.href='/?filter=' + this.value">
-            <option value="all" {% if filter == 'all' %}selected{% endif %}>All emails</option>
-            <option value="unopened" {% if filter == 'unopened' %}selected{% endif %}>Unopened emails</option>
-            <option value="opened" {% if filter == 'opened' %}selected{% endif %}>Opened emails</option>
-        </select>
+        <div class="filter-row">
+            <select class="filter-dropdown" onchange="updateFilters('filter', this.value)">
+                <option value="all" {% if filter == 'all' %}selected{% endif %}>All emails</option>
+                <option value="unopened" {% if filter == 'unopened' %}selected{% endif %}>Unopened emails</option>
+                <option value="opened" {% if filter == 'opened' %}selected{% endif %}>Opened emails</option>
+            </select>
+            <select class="filter-dropdown" onchange="updateFilters('date_range', this.value)">
+                <option value="all" {% if date_range == 'all' %}selected{% endif %}>All time</option>
+                <option value="7" {% if date_range == '7' %}selected{% endif %}>Last 7 days</option>
+                <option value="30" {% if date_range == '30' %}selected{% endif %}>Last 30 days</option>
+                <option value="90" {% if date_range == '90' %}selected{% endif %}>Last 90 days</option>
+            </select>
+            <form class="search-form" onsubmit="return submitSearch(event)">
+                <input type="text" class="search-input" placeholder="Search recipient or subject..." value="{{ search }}" id="search-input">
+                <button type="submit" class="search-btn">Search</button>
+                {% if search %}
+                <button type="button" class="search-clear" onclick="clearSearch()">Clear</button>
+                {% endif %}
+            </form>
+        </div>
     </div>
     <a href="/export" class="btn btn-secondary">Export CSV</a>
 </div>
+
+<script>
+function updateFilters(param, value) {
+    const url = new URL(window.location.href);
+    if (value === 'all') {
+        url.searchParams.delete(param);
+    } else {
+        url.searchParams.set(param, value);
+    }
+    url.searchParams.delete('page'); // Reset to page 1 when filters change
+    window.location.href = url.toString();
+}
+
+function submitSearch(e) {
+    e.preventDefault();
+    const search = document.getElementById('search-input').value.trim();
+    const url = new URL(window.location.href);
+    if (search) {
+        url.searchParams.set('search', search);
+    } else {
+        url.searchParams.delete('search');
+    }
+    url.searchParams.delete('page');
+    window.location.href = url.toString();
+    return false;
+}
+
+function clearSearch() {
+    const url = new URL(window.location.href);
+    url.searchParams.delete('search');
+    url.searchParams.delete('page');
+    window.location.href = url.toString();
+}
+</script>
 
 {% if tracks %}
 <div class="email-list">
@@ -92,7 +141,36 @@
     {% endfor %}
 </div>
 
+{% if total_pages > 1 %}
+<div class="pagination">
+    <div class="pagination-info">
+        Showing {{ (page - 1) * 25 + 1 }}-{{ [page * 25, total_items] | min }} of {{ total_items }} emails
+    </div>
+    <div class="pagination-controls">
+        {% if page > 1 %}
+        <a href="/?{% for k, v in query_params.items() %}{{ k }}={{ v }}&{% endfor %}page={{ page - 1 }}" class="pagination-btn">Previous</a>
+        {% else %}
+        <span class="pagination-btn disabled">Previous</span>
+        {% endif %}
+
+        <span class="pagination-pages">Page {{ page }} of {{ total_pages }}</span>
+
+        {% if page < total_pages %}
+        <a href="/?{% for k, v in query_params.items() %}{{ k }}={{ v }}&{% endfor %}page={{ page + 1 }}" class="pagination-btn">Next</a>
+        {% else %}
+        <span class="pagination-btn disabled">Next</span>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
 {% else %}
-<p class="empty">No tracked emails yet. Send an email with the Chrome extension to start tracking.</p>
+<p class="empty">
+    {% if search or filter != 'all' or date_range != 'all' %}
+    No emails match your filters. <a href="/">Clear filters</a>
+    {% else %}
+    No tracked emails yet. Send an email with the Chrome extension to start tracking.
+    {% endif %}
+</p>
 {% endif %}
 {% endblock %}

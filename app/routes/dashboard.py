@@ -2,16 +2,16 @@ from fastapi import APIRouter, Request, Depends, Form, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, delete
+from sqlalchemy import select, func, delete, or_
 from starlette.middleware.sessions import SessionMiddleware
 import uuid
 import os
 import io
 import csv
 import ipaddress
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 from ..database import get_db, TrackedEmail, Open
 
@@ -135,8 +135,19 @@ async def logout(request: Request):
     return RedirectResponse(url="/login", status_code=303)
 
 
+# Pagination settings
+ITEMS_PER_PAGE = 25
+
+
 @router.get("/", response_class=HTMLResponse)
-async def dashboard(request: Request, filter: str = "all", db: AsyncSession = Depends(get_db)):
+async def dashboard(
+    request: Request,
+    filter: str = "all",
+    search: str = "",
+    date_range: str = "all",
+    page: int = 1,
+    db: AsyncSession = Depends(get_db)
+):
     if not is_authenticated(request):
         return RedirectResponse(url="/login", status_code=303)
 
@@ -144,9 +155,35 @@ async def dashboard(request: Request, filter: str = "all", db: AsyncSession = De
     if filter not in ("all", "opened", "unopened"):
         filter = "all"
 
-    result = await db.execute(
-        select(TrackedEmail).order_by(TrackedEmail.created_at.desc())
-    )
+    # Validate date_range parameter
+    if date_range not in ("all", "7", "30", "90"):
+        date_range = "all"
+
+    # Validate page
+    if page < 1:
+        page = 1
+
+    # Build query with search and date filters
+    query = select(TrackedEmail).order_by(TrackedEmail.created_at.desc())
+
+    # Apply search filter
+    search = search.strip()
+    if search:
+        search_pattern = f"%{search}%"
+        query = query.where(
+            or_(
+                TrackedEmail.recipient.ilike(search_pattern),
+                TrackedEmail.subject.ilike(search_pattern)
+            )
+        )
+
+    # Apply date range filter
+    if date_range != "all":
+        days = int(date_range)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        query = query.where(TrackedEmail.created_at >= cutoff)
+
+    result = await db.execute(query)
     tracks = result.scalars().all()
 
     # Group tracks by message_group_id
@@ -241,10 +278,34 @@ async def dashboard(request: Request, filter: str = "all", db: AsyncSession = De
             **track_data
         })
 
+    # Pagination
+    total_items = len(tracks_with_counts)
+    total_pages = max(1, (total_items + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE)
+    if page > total_pages:
+        page = total_pages
+    start_idx = (page - 1) * ITEMS_PER_PAGE
+    end_idx = start_idx + ITEMS_PER_PAGE
+    paginated_tracks = tracks_with_counts[start_idx:end_idx]
+
+    # Build query string for pagination links (preserve other filters)
+    query_params = {}
+    if filter != "all":
+        query_params["filter"] = filter
+    if search:
+        query_params["search"] = search
+    if date_range != "all":
+        query_params["date_range"] = date_range
+
     return templates.TemplateResponse("dashboard.html", {
         "request": request,
-        "tracks": tracks_with_counts,
-        "filter": filter
+        "tracks": paginated_tracks,
+        "filter": filter,
+        "search": search,
+        "date_range": date_range,
+        "page": page,
+        "total_pages": total_pages,
+        "total_items": total_items,
+        "query_params": query_params
     })
 
 
