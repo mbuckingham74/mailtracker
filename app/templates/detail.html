@@ -3,9 +3,14 @@
 {% block content %}
 <div class="detail-header">
     <h1>Track Details</h1>
-    <form method="post" action="/delete/{{ track.id }}" style="display:inline" onsubmit="return confirm('Delete this track and all opens?')">
-        <button type="submit" class="btn btn-danger">Delete</button>
-    </form>
+    <div class="detail-actions">
+        {% if track.recipient or track.subject %}
+        <a href="{{ gmail_search_url }}" target="_blank" class="btn btn-secondary">View in Gmail</a>
+        {% endif %}
+        <form method="post" action="/delete/{{ track.id }}" style="display:inline" onsubmit="return confirm('Delete this track and all opens?')">
+            <button type="submit" class="btn btn-danger">Delete</button>
+        </form>
+    </div>
 </div>
 
 <div class="track-info">

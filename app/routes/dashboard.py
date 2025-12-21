@@ -8,6 +8,7 @@ import uuid
 import os
 import ipaddress
 from datetime import datetime, timezone, timedelta
+from urllib.parse import quote
 
 from ..database import get_db, TrackedEmail, Open
 
@@ -286,6 +287,17 @@ async def detail_page(request: Request, track_id: str, db: AsyncSession = Depend
     pixel_url = f"https://mailtrack.tachyonfuture.com/p/{track.id}.gif"
     html_snippet = f'<img src="{pixel_url}" width="1" height="1" style="display:none" alt="" />'
 
+    # Build Gmail search URL to find the original sent email
+    gmail_search_parts = ["in:sent"]
+    if track.recipient:
+        # Handle comma-separated recipients - just use first one for search
+        first_recipient = track.recipient.split(',')[0].strip()
+        gmail_search_parts.append(f"to:{first_recipient}")
+    if track.subject:
+        gmail_search_parts.append(f"subject:{track.subject}")
+    gmail_search_query = " ".join(gmail_search_parts)
+    gmail_search_url = f"https://mail.google.com/mail/u/0/#search/{quote(gmail_search_query)}"
+
     return templates.TemplateResponse("detail.html", {
         "request": request,
         "track": track,
@@ -294,7 +306,8 @@ async def detail_page(request: Request, track_id: str, db: AsyncSession = Depend
         "first_proxy_open": first_proxy_open,
         "first_proxy_type": first_proxy_type,
         "pixel_url": pixel_url,
-        "html_snippet": html_snippet
+        "html_snippet": html_snippet,
+        "gmail_search_url": gmail_search_url
     })
 
 
