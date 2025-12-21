@@ -320,6 +320,19 @@ tr.opened:hover {
     background: #fafafa;
 }
 
+/* Clickable rows */
+a.email-row,
+a.recipient-row {
+    text-decoration: none;
+    color: inherit;
+    cursor: pointer;
+}
+
+a.email-row:hover,
+a.recipient-row:hover {
+    background: #f0f7ff;
+}
+
 .email-row.has-opens {
     border-left: 3px solid #27ae60;
 }

@@ -55,7 +55,7 @@
     {# Expandable recipient details #}
     <div class="recipient-details" id="group-{{ item.group_id }}" style="display: none;">
         {% for recipient in item.recipients %}
-        <div class="recipient-row {% if recipient.real_open_count > 0 %}has-opens{% endif %}">
+        <a href="/detail/{{ recipient.track.id }}" class="recipient-row clickable {% if recipient.real_open_count > 0 %}has-opens{% endif %}">
             <div class="recipient-email">{{ recipient.track.recipient or '-' }}</div>
             <div class="recipient-stats">
                 {{ recipient.real_open_count }} open{{ 's' if recipient.real_open_count != 1 else '' }}
@@ -63,13 +63,12 @@
                 <span class="recipient-time">{{ to_est(recipient.first_real_open).strftime('%b %d at %-I:%M %p') }} EST</span>
                 {% endif %}
             </div>
-            <a href="/detail/{{ recipient.track.id }}" class="btn btn-sm">View</a>
-        </div>
+        </a>
         {% endfor %}
     </div>
     {% else %}
     {# Single recipient email #}
-    <div class="email-row {% if item.real_open_count > 0 %}has-opens{% endif %}">
+    <a href="/detail/{{ item.track.id }}" class="email-row clickable {% if item.real_open_count > 0 %}has-opens{% endif %}">
         <div class="email-main">
             <div class="email-recipients">
                 {% if item.track.recipient %}
@@ -101,16 +100,7 @@
             <div class="last-open">Opened {{ to_est(item.first_real_open).strftime('%b %d') }} at {{ to_est(item.first_real_open).strftime('%-I:%M %p') }} EST</div>
             {% endif %}
         </div>
-        <div class="email-actions">
-            <a href="/detail/{{ item.track.id }}" class="expand-btn" title="View details">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="12" cy="12" r="1"></circle>
-                    <circle cx="12" cy="5" r="1"></circle>
-                    <circle cx="12" cy="19" r="1"></circle>
-                </svg>
-            </a>
-        </div>
-    </div>
+    </a>
     {% endif %}
     {% endfor %}
 </div>
