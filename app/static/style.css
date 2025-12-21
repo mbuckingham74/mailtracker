@@ -298,27 +298,162 @@ tr.opened:hover {
     margin-bottom: 0;
 }
 
-/* Multi-recipient grouping */
-.group-header {
-    background: #f0f4f8;
+/* New email list layout */
+.email-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    background: #e0e0e0;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.email-row {
+    display: flex;
+    align-items: center;
+    padding: 1rem 1.25rem;
+    background: white;
+    gap: 1.5rem;
+}
+
+.email-row:hover {
+    background: #fafafa;
+}
+
+.email-row.has-opens {
+    border-left: 3px solid #27ae60;
+}
+
+.email-row.expanded {
+    background: #f8f9fa;
+}
+
+.email-main {
+    flex: 1;
+    min-width: 0;
+}
+
+.email-recipients {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.recipient-pill {
+    display: inline-block;
+    padding: 0.25rem 0.75rem;
+    background: #f0f0f0;
+    border: 1px solid #ddd;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    color: #555;
+}
+
+.recipient-pill.opened {
+    background: #e8f5e9;
+    border-color: #a5d6a7;
+    color: #2e7d32;
+}
+
+.email-subject {
     font-weight: 500;
+    color: #333;
+    margin-bottom: 0.25rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
-.group-header:hover {
-    background: #e4eaf0;
+.email-meta {
+    font-size: 0.85rem;
+    color: #888;
 }
 
-.group-member td {
+.email-stats {
+    text-align: right;
+    min-width: 180px;
+}
+
+.opens-count {
+    font-weight: 600;
+    color: #27ae60;
+}
+
+.proxy-indicator {
+    font-weight: normal;
+    font-size: 0.8rem;
+    color: #999;
+    margin-left: 0.25rem;
+}
+
+.last-open {
+    font-size: 0.8rem;
+    color: #888;
+    margin-top: 0.25rem;
+}
+
+.email-actions {
+    display: flex;
+    align-items: center;
+}
+
+.expand-btn {
+    width: 36px;
+    height: 36px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    background: white;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #666;
+    text-decoration: none;
+}
+
+.expand-btn:hover {
+    background: #f5f5f5;
+    border-color: #ccc;
+}
+
+/* Expandable recipient details */
+.recipient-details {
+    background: #f8f9fa;
     border-left: 3px solid #3498db;
 }
 
-.group-member td.indent {
-    padding-left: 2rem;
+.recipient-row {
+    display: flex;
+    align-items: center;
+    padding: 0.75rem 1.25rem 0.75rem 2rem;
+    gap: 1rem;
+    border-bottom: 1px solid #eee;
 }
 
-.recipient-count {
-    color: #7f8c8d;
-    font-style: italic;
+.recipient-row:last-child {
+    border-bottom: none;
+}
+
+.recipient-row.has-opens {
+    background: #f0faf0;
+}
+
+.recipient-email {
+    flex: 1;
+    font-size: 0.9rem;
+    color: #555;
+}
+
+.recipient-stats {
+    font-size: 0.85rem;
+    color: #27ae60;
+    min-width: 150px;
+}
+
+.recipient-time {
+    color: #888;
+    margin-left: 0.5rem;
 }
 
 /* Proxy detection badges */
