@@ -5,7 +5,10 @@ from sqlalchemy import select
 from ..database import get_db, TrackedEmail, Open
 from ..geoip import lookup_ip
 import base64
+import logging
 from datetime import datetime, timezone
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -73,9 +76,13 @@ async def track_pixel(
                 )
                 db.add(open_record)
                 await db.commit()
-    except Exception:
-        # Silently fail - don't break pixel delivery
-        pass
+    except Exception as e:
+        # Log the error but don't break pixel delivery
+        logger.exception(f"Failed to record open for tracking_id={tracking_id}: {e}")
+        try:
+            await db.rollback()
+        except Exception:
+            pass  # Rollback may fail if session is in a bad state
 
     return Response(
         content=PIXEL_GIF,
