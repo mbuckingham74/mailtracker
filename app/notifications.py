@@ -109,3 +109,84 @@ This is the first real open (excluding email privacy proxies).
     except Exception as e:
         logger.error(f"Failed to send open notification: {e}")
         return False
+
+
+def send_followup_reminder(
+    recipient: str,
+    subject: str,
+    sent_at: datetime,
+    days_ago: int,
+    track_id: str
+) -> bool:
+    """
+    Send email notification reminding to follow up on an unopened email.
+
+    Returns True if email was sent successfully, False otherwise.
+    """
+    if not is_email_notifications_enabled():
+        logger.warning("Email notifications not configured - skipping followup reminder")
+        return False
+
+    # Format the email
+    email_subject = f"Follow-up Reminder: {subject or '(no subject)'}"
+
+    html_body = f"""
+    <html>
+    <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 20px;">
+        <h2 style="color: #e67e22;">Time to follow up?</h2>
+        <p style="color: #555; font-size: 16px;">
+            Your email hasn't been opened in <strong>{days_ago} days</strong>. Consider sending a follow-up!
+        </p>
+        <table style="border-collapse: collapse; margin-top: 15px;">
+            <tr>
+                <td style="padding: 8px 15px 8px 0; color: #666; font-weight: bold;">To:</td>
+                <td style="padding: 8px 0;">{recipient or 'Unknown'}</td>
+            </tr>
+            <tr>
+                <td style="padding: 8px 15px 8px 0; color: #666; font-weight: bold;">Subject:</td>
+                <td style="padding: 8px 0;">{subject or '(no subject)'}</td>
+            </tr>
+            <tr>
+                <td style="padding: 8px 15px 8px 0; color: #666; font-weight: bold;">Sent:</td>
+                <td style="padding: 8px 0;">{sent_at.strftime('%B %d, %Y at %I:%M %p')}</td>
+            </tr>
+        </table>
+        <p style="margin-top: 20px; color: #888; font-size: 12px;">
+            This email has not been opened (excluding automated proxy prefetches).
+        </p>
+    </body>
+    </html>
+    """
+
+    text_body = f"""
+Time to follow up?
+
+Your email hasn't been opened in {days_ago} days. Consider sending a follow-up!
+
+To: {recipient or 'Unknown'}
+Subject: {subject or '(no subject)'}
+Sent: {sent_at.strftime('%B %d, %Y at %I:%M %p')}
+
+This email has not been opened (excluding automated proxy prefetches).
+    """
+
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = email_subject
+        msg["From"] = SMTP_USERNAME
+        msg["To"] = NOTIFICATION_EMAIL
+
+        msg.attach(MIMEText(text_body, "plain"))
+        msg.attach(MIMEText(html_body, "html"))
+
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+            server.starttls()
+            server.login(SMTP_USERNAME, SMTP_PASSWORD)
+            server.sendmail(SMTP_USERNAME, NOTIFICATION_EMAIL, msg.as_string())
+
+        logger.info(f"Follow-up reminder sent for track {track_id}")
+        return True
+
+    except Exception as e:
+        logger.error(f"Failed to send follow-up reminder: {e}")
+        return False

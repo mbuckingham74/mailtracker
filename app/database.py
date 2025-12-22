@@ -25,6 +25,7 @@ class TrackedEmail(Base):
     created_at = Column(DateTime, server_default=func.now())
     notified_at = Column(DateTime, nullable=True)  # When email notification was sent for first real open
     pinned = Column(Boolean, default=False, nullable=False)  # Pin important emails to top
+    followup_notified_at = Column(DateTime, nullable=True)  # When follow-up reminder was sent for unopened email
 
 
 class Open(Base):
