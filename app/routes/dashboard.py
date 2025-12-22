@@ -8,9 +8,12 @@ import uuid
 import os
 import io
 import csv
+import json
 from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from urllib.parse import quote, urlencode
+from collections import defaultdict
+from statistics import median
 
 from ..database import get_db, TrackedEmail, Open
 from ..proxy_detection import detect_proxy_type
@@ -405,3 +408,260 @@ async def export_csv(request: Request, db: AsyncSession = Depends(get_db)):
         media_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'}
     )
+
+
+@router.get("/analytics", response_class=HTMLResponse)
+async def analytics(
+    request: Request,
+    date_range: str = "30",
+    db: AsyncSession = Depends(get_db)
+):
+    """Analytics dashboard with charts and statistics."""
+    if not is_authenticated(request):
+        return RedirectResponse(url="/login", status_code=303)
+
+    # Validate date_range parameter
+    if date_range not in ("7", "30", "90", "all"):
+        date_range = "30"
+
+    # Calculate date cutoff
+    now = datetime.now(timezone.utc)
+    if date_range == "all":
+        cutoff = None
+    else:
+        days = int(date_range)
+        cutoff = now - timedelta(days=days)
+
+    # Query tracked emails
+    query = select(TrackedEmail)
+    if cutoff:
+        query = query.where(TrackedEmail.created_at >= cutoff)
+    result = await db.execute(query)
+    tracks = result.scalars().all()
+
+    # Query all opens
+    opens_query = select(Open)
+    if cutoff:
+        opens_query = opens_query.where(Open.opened_at >= cutoff)
+    opens_result = await db.execute(opens_query)
+    all_opens = opens_result.scalars().all()
+
+    # Separate real opens from proxy opens
+    real_opens = []
+    for o in all_opens:
+        proxy_type = detect_proxy_type(o.ip_address, o.user_agent or '')
+        if not proxy_type:
+            real_opens.append(o)
+
+    # Calculate summary statistics
+    total_emails = len(tracks)
+    total_real_opens = len(real_opens)
+
+    # Open rate: % of emails with at least one real open
+    emails_with_opens = set()
+    for o in real_opens:
+        emails_with_opens.add(o.tracked_email_id)
+    open_rate = (len(emails_with_opens) / total_emails * 100) if total_emails > 0 else 0
+
+    # Calculate time to first open for each email
+    # First, get first real open time for each email
+    first_real_open_times = {}
+    for o in real_opens:
+        if o.tracked_email_id not in first_real_open_times:
+            first_real_open_times[o.tracked_email_id] = o.opened_at
+        elif o.opened_at < first_real_open_times[o.tracked_email_id]:
+            first_real_open_times[o.tracked_email_id] = o.opened_at
+
+    # Calculate time deltas
+    time_to_open_hours = []
+    track_created_map = {t.id: t.created_at for t in tracks}
+    for email_id, first_open in first_real_open_times.items():
+        if email_id in track_created_map:
+            created = track_created_map[email_id]
+            if created and first_open:
+                # Make both timezone-aware for comparison
+                if created.tzinfo is None:
+                    created = created.replace(tzinfo=timezone.utc)
+                if first_open.tzinfo is None:
+                    first_open = first_open.replace(tzinfo=timezone.utc)
+                delta = (first_open - created).total_seconds() / 3600  # hours
+                if delta > 0:
+                    time_to_open_hours.append(delta)
+
+    avg_time_to_open = median(time_to_open_hours) if time_to_open_hours else None
+
+    # Format avg time to open for display
+    if avg_time_to_open is not None:
+        if avg_time_to_open < 1:
+            avg_time_to_open_display = f"{int(avg_time_to_open * 60)} min"
+        elif avg_time_to_open < 24:
+            avg_time_to_open_display = f"{avg_time_to_open:.1f} hrs"
+        else:
+            avg_time_to_open_display = f"{avg_time_to_open / 24:.1f} days"
+    else:
+        avg_time_to_open_display = "N/A"
+
+    # Determine chart granularity based on date range
+    if date_range in ("7", "30"):
+        granularity = "daily"
+    elif date_range == "90":
+        granularity = "weekly"
+    else:
+        granularity = "monthly"
+
+    # Time series data: emails sent and opens over time
+    emails_by_date = defaultdict(int)
+    opens_by_date = defaultdict(int)
+
+    for track in tracks:
+        if track.created_at:
+            date_key = _get_date_key(track.created_at, granularity)
+            emails_by_date[date_key] += 1
+
+    for o in real_opens:
+        if o.opened_at:
+            date_key = _get_date_key(o.opened_at, granularity)
+            opens_by_date[date_key] += 1
+
+    # Generate all date keys for the range
+    all_date_keys = _generate_date_keys(cutoff or datetime(2020, 1, 1, tzinfo=timezone.utc), now, granularity)
+
+    time_series_labels = all_date_keys
+    time_series_emails = [emails_by_date.get(k, 0) for k in all_date_keys]
+    time_series_opens = [opens_by_date.get(k, 0) for k in all_date_keys]
+
+    # Geographic data: opens by country
+    opens_by_country = defaultdict(int)
+    opens_by_city = defaultdict(int)
+    for o in real_opens:
+        country = o.country or "Unknown"
+        opens_by_country[country] += 1
+        if o.city:
+            opens_by_city[f"{o.city}, {country}"] += 1
+
+    top_countries = sorted(opens_by_country.items(), key=lambda x: x[1], reverse=True)[:10]
+    top_cities = sorted(opens_by_city.items(), key=lambda x: x[1], reverse=True)[:10]
+
+    # Hour of day distribution (in local timezone)
+    opens_by_hour = defaultdict(int)
+    for o in real_opens:
+        if o.opened_at:
+            local_time = to_local(o.opened_at)
+            opens_by_hour[local_time.hour] += 1
+
+    hour_labels = [f"{h:02d}:00" for h in range(24)]
+    hour_data = [opens_by_hour.get(h, 0) for h in range(24)]
+
+    # Day of week distribution (in local timezone)
+    opens_by_dow = defaultdict(int)
+    dow_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    for o in real_opens:
+        if o.opened_at:
+            local_time = to_local(o.opened_at)
+            opens_by_dow[local_time.weekday()] += 1
+
+    dow_data = [opens_by_dow.get(i, 0) for i in range(7)]
+
+    # Time to first open distribution
+    time_buckets = {
+        "<1 hr": 0,
+        "1-6 hrs": 0,
+        "6-24 hrs": 0,
+        "1-3 days": 0,
+        "3-7 days": 0,
+        ">7 days": 0
+    }
+    for hours in time_to_open_hours:
+        if hours < 1:
+            time_buckets["<1 hr"] += 1
+        elif hours < 6:
+            time_buckets["1-6 hrs"] += 1
+        elif hours < 24:
+            time_buckets["6-24 hrs"] += 1
+        elif hours < 72:
+            time_buckets["1-3 days"] += 1
+        elif hours < 168:
+            time_buckets["3-7 days"] += 1
+        else:
+            time_buckets[">7 days"] += 1
+
+    time_bucket_labels = list(time_buckets.keys())
+    time_bucket_data = list(time_buckets.values())
+
+    return templates.TemplateResponse("analytics.html", {
+        "request": request,
+        "date_range": date_range,
+        # Summary stats
+        "total_emails": total_emails,
+        "total_real_opens": total_real_opens,
+        "open_rate": round(open_rate, 1),
+        "avg_time_to_open": avg_time_to_open_display,
+        # Time series (as JSON for Chart.js)
+        "time_series_labels": json.dumps(time_series_labels),
+        "time_series_emails": json.dumps(time_series_emails),
+        "time_series_opens": json.dumps(time_series_opens),
+        # Geographic
+        "country_labels": json.dumps([c[0] for c in top_countries]),
+        "country_data": json.dumps([c[1] for c in top_countries]),
+        "top_cities": top_cities,
+        # Hour of day
+        "hour_labels": json.dumps(hour_labels),
+        "hour_data": json.dumps(hour_data),
+        # Day of week
+        "dow_labels": json.dumps(dow_names),
+        "dow_data": json.dumps(dow_data),
+        # Time to first open
+        "time_bucket_labels": json.dumps(time_bucket_labels),
+        "time_bucket_data": json.dumps(time_bucket_data),
+    })
+
+
+def _get_date_key(dt: datetime, granularity: str) -> str:
+    """Convert datetime to a date key based on granularity."""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    local_dt = dt.astimezone(DISPLAY_TIMEZONE)
+
+    if granularity == "daily":
+        return local_dt.strftime("%Y-%m-%d")
+    elif granularity == "weekly":
+        # Get start of week (Monday)
+        start_of_week = local_dt - timedelta(days=local_dt.weekday())
+        return start_of_week.strftime("%Y-%m-%d")
+    else:  # monthly
+        return local_dt.strftime("%Y-%m")
+
+
+def _generate_date_keys(start: datetime, end: datetime, granularity: str) -> list:
+    """Generate all date keys between start and end."""
+    if start.tzinfo is None:
+        start = start.replace(tzinfo=timezone.utc)
+    if end.tzinfo is None:
+        end = end.replace(tzinfo=timezone.utc)
+
+    start_local = start.astimezone(DISPLAY_TIMEZONE)
+    end_local = end.astimezone(DISPLAY_TIMEZONE)
+
+    keys = []
+    current = start_local
+
+    if granularity == "daily":
+        while current <= end_local:
+            keys.append(current.strftime("%Y-%m-%d"))
+            current += timedelta(days=1)
+    elif granularity == "weekly":
+        # Start from Monday of the start week
+        current = current - timedelta(days=current.weekday())
+        while current <= end_local:
+            keys.append(current.strftime("%Y-%m-%d"))
+            current += timedelta(weeks=1)
+    else:  # monthly
+        while current <= end_local:
+            keys.append(current.strftime("%Y-%m"))
+            # Move to first of next month
+            if current.month == 12:
+                current = current.replace(year=current.year + 1, month=1, day=1)
+            else:
+                current = current.replace(month=current.month + 1, day=1)
+
+    return keys

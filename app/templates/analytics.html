@@ -1,0 +1,257 @@
+{% extends "base.html" %}
+
+{% block title %}Analytics - Mailtrack{% endblock %}
+
+{% block content %}
+<div class="analytics-header">
+    <h1>Analytics</h1>
+    <form class="date-filter-form" method="get" action="/analytics">
+        <select name="date_range" class="filter-dropdown" onchange="this.form.submit()">
+            <option value="7" {% if date_range == "7" %}selected{% endif %}>Last 7 days</option>
+            <option value="30" {% if date_range == "30" %}selected{% endif %}>Last 30 days</option>
+            <option value="90" {% if date_range == "90" %}selected{% endif %}>Last 90 days</option>
+            <option value="all" {% if date_range == "all" %}selected{% endif %}>All time</option>
+        </select>
+    </form>
+</div>
+
+<div class="stats-cards">
+    <div class="stat-card">
+        <div class="stat-value">{{ total_emails }}</div>
+        <div class="stat-label">Emails Tracked</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ total_real_opens }}</div>
+        <div class="stat-label">Real Opens</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ open_rate }}%</div>
+        <div class="stat-label">Open Rate</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ avg_time_to_open }}</div>
+        <div class="stat-label">Median Time to Open</div>
+    </div>
+</div>
+
+<div class="chart-container full-width">
+    <h3>Emails Sent & Opens Over Time</h3>
+    <canvas id="timeSeriesChart"></canvas>
+</div>
+
+<div class="chart-grid">
+    <div class="chart-container">
+        <h3>Opens by Country</h3>
+        <canvas id="countryChart"></canvas>
+    </div>
+    <div class="chart-container">
+        <h3>Opens by Hour of Day</h3>
+        <canvas id="hourChart"></canvas>
+    </div>
+</div>
+
+<div class="chart-grid">
+    <div class="chart-container">
+        <h3>Opens by Day of Week</h3>
+        <canvas id="dowChart"></canvas>
+    </div>
+    <div class="chart-container">
+        <h3>Time to First Open</h3>
+        <canvas id="timeToOpenChart"></canvas>
+    </div>
+</div>
+
+{% if top_cities %}
+<div class="chart-container full-width">
+    <h3>Top Cities</h3>
+    <table class="cities-table">
+        <thead>
+            <tr>
+                <th>City</th>
+                <th>Opens</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for city, count in top_cities %}
+            <tr>
+                <td>{{ city }}</td>
+                <td>{{ count }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    // Color palette
+    const colors = {
+        primary: '#3498db',
+        primaryLight: 'rgba(52, 152, 219, 0.2)',
+        secondary: '#27ae60',
+        secondaryLight: 'rgba(39, 174, 96, 0.2)',
+        gray: '#95a5a6',
+        grayLight: 'rgba(149, 165, 166, 0.2)'
+    };
+
+    // Time Series Chart (combined bar + line)
+    const timeSeriesCtx = document.getElementById('timeSeriesChart').getContext('2d');
+    new Chart(timeSeriesCtx, {
+        type: 'bar',
+        data: {
+            labels: {{ time_series_labels | safe }},
+            datasets: [
+                {
+                    label: 'Emails Sent',
+                    data: {{ time_series_emails | safe }},
+                    backgroundColor: colors.primaryLight,
+                    borderColor: colors.primary,
+                    borderWidth: 1,
+                    order: 2
+                },
+                {
+                    label: 'Opens',
+                    data: {{ time_series_opens | safe }},
+                    type: 'line',
+                    borderColor: colors.secondary,
+                    backgroundColor: colors.secondaryLight,
+                    fill: true,
+                    tension: 0.3,
+                    order: 1
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: { precision: 0 }
+                }
+            },
+            plugins: {
+                legend: { position: 'top' }
+            }
+        }
+    });
+
+    // Country Chart (horizontal bar)
+    const countryCtx = document.getElementById('countryChart').getContext('2d');
+    new Chart(countryCtx, {
+        type: 'bar',
+        data: {
+            labels: {{ country_labels | safe }},
+            datasets: [{
+                label: 'Opens',
+                data: {{ country_data | safe }},
+                backgroundColor: colors.primary,
+                borderColor: colors.primary,
+                borderWidth: 1
+            }]
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: {
+                    beginAtZero: true,
+                    ticks: { precision: 0 }
+                }
+            },
+            plugins: {
+                legend: { display: false }
+            }
+        }
+    });
+
+    // Hour of Day Chart
+    const hourCtx = document.getElementById('hourChart').getContext('2d');
+    new Chart(hourCtx, {
+        type: 'bar',
+        data: {
+            labels: {{ hour_labels | safe }},
+            datasets: [{
+                label: 'Opens',
+                data: {{ hour_data | safe }},
+                backgroundColor: colors.secondary,
+                borderColor: colors.secondary,
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: { precision: 0 }
+                }
+            },
+            plugins: {
+                legend: { display: false }
+            }
+        }
+    });
+
+    // Day of Week Chart
+    const dowCtx = document.getElementById('dowChart').getContext('2d');
+    new Chart(dowCtx, {
+        type: 'bar',
+        data: {
+            labels: {{ dow_labels | safe }},
+            datasets: [{
+                label: 'Opens',
+                data: {{ dow_data | safe }},
+                backgroundColor: colors.primary,
+                borderColor: colors.primary,
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: { precision: 0 }
+                }
+            },
+            plugins: {
+                legend: { display: false }
+            }
+        }
+    });
+
+    // Time to First Open Chart
+    const timeToOpenCtx = document.getElementById('timeToOpenChart').getContext('2d');
+    new Chart(timeToOpenCtx, {
+        type: 'bar',
+        data: {
+            labels: {{ time_bucket_labels | safe }},
+            datasets: [{
+                label: 'Emails',
+                data: {{ time_bucket_data | safe }},
+                backgroundColor: colors.secondary,
+                borderColor: colors.secondary,
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: { precision: 0 }
+                }
+            },
+            plugins: {
+                legend: { display: false }
+            }
+        }
+    });
+</script>
+{% endblock %}
