@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+
+{% block title %}Recipients - Mailtrack{% endblock %}
+
+{% block content %}
+<div class="recipients-header">
+    <h1>Recipients</h1>
+    <form class="search-form" method="get" action="/recipients">
+        <input type="text" name="search" class="search-input" placeholder="Search emails..." value="{{ search }}">
+        <button type="submit" class="search-btn">Search</button>
+        {% if search %}
+        <a href="/recipients" class="search-clear">Clear</a>
+        {% endif %}
+        <input type="hidden" name="sort" value="{{ sort }}">
+        <input type="hidden" name="order" value="{{ order }}">
+    </form>
+</div>
+
+{% if recipients %}
+<div class="recipients-table-container">
+    <table class="recipients-table">
+        <thead>
+            <tr>
+                <th>
+                    <a href="/recipients?sort=email&order={% if sort == 'email' and order == 'asc' %}desc{% else %}asc{% endif %}{% if search %}&search={{ search }}{% endif %}" class="sort-header {% if sort == 'email' %}active{% endif %}">
+                        Email {% if sort == 'email' %}{% if order == 'asc' %}▲{% else %}▼{% endif %}{% endif %}
+                    </a>
+                </th>
+                <th class="text-center">
+                    <a href="/recipients?sort=sent&order={% if sort == 'sent' and order == 'desc' %}asc{% else %}desc{% endif %}{% if search %}&search={{ search }}{% endif %}" class="sort-header {% if sort == 'sent' %}active{% endif %}">
+                        Sent {% if sort == 'sent' %}{% if order == 'asc' %}▲{% else %}▼{% endif %}{% endif %}
+                    </a>
+                </th>
+                <th class="text-center">
+                    <a href="/recipients?sort=opened&order={% if sort == 'opened' and order == 'desc' %}asc{% else %}desc{% endif %}{% if search %}&search={{ search }}{% endif %}" class="sort-header {% if sort == 'opened' %}active{% endif %}">
+                        Opened {% if sort == 'opened' %}{% if order == 'asc' %}▲{% else %}▼{% endif %}{% endif %}
+                    </a>
+                </th>
+                <th class="text-center">
+                    <a href="/recipients?sort=rate&order={% if sort == 'rate' and order == 'desc' %}asc{% else %}desc{% endif %}{% if search %}&search={{ search }}{% endif %}" class="sort-header {% if sort == 'rate' %}active{% endif %}">
+                        Rate {% if sort == 'rate' %}{% if order == 'asc' %}▲{% else %}▼{% endif %}{% endif %}
+                    </a>
+                </th>
+                <th>
+                    <a href="/recipients?sort=last_open&order={% if sort == 'last_open' and order == 'desc' %}asc{% else %}desc{% endif %}{% if search %}&search={{ search }}{% endif %}" class="sort-header {% if sort == 'last_open' %}active{% endif %}">
+                        Last Open {% if sort == 'last_open' %}{% if order == 'asc' %}▲{% else %}▼{% endif %}{% endif %}
+                    </a>
+                </th>
+                <th class="text-center">
+                    <a href="/recipients?sort=score&order={% if sort == 'score' and order == 'desc' %}asc{% else %}desc{% endif %}{% if search %}&search={{ search }}{% endif %}" class="sort-header {% if sort == 'score' %}active{% endif %}">
+                        Score {% if sort == 'score' %}{% if order == 'asc' %}▲{% else %}▼{% endif %}{% endif %}
+                    </a>
+                </th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in recipients %}
+            <tr class="recipient-row" onclick="window.location='/recipients/{{ r.email }}'">
+                <td class="recipient-email">{{ r.email }}</td>
+                <td class="text-center">{{ r.sent }}</td>
+                <td class="text-center">{{ r.opened }}</td>
+                <td class="text-center">{{ r.open_rate }}%</td>
+                <td class="last-open-cell">{{ r.last_open_display }}</td>
+                <td class="text-center">
+                    <span class="engagement-score score-{{ 'high' if r.score >= 80 else 'medium' if r.score >= 40 else 'low' }}">
+                        {{ r.score }}
+                    </span>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% if total_pages > 1 %}
+<div class="pagination">
+    <div class="pagination-info">
+        Showing {{ (page - 1) * 25 + 1 }}-{{ [page * 25, total_items] | min }} of {{ total_items }} recipients
+    </div>
+    <div class="pagination-controls">
+        {% if page > 1 %}
+        <a href="/recipients?page={{ page - 1 }}&sort={{ sort }}&order={{ order }}{% if search %}&search={{ search }}{% endif %}" class="pagination-btn">Previous</a>
+        {% else %}
+        <span class="pagination-btn disabled">Previous</span>
+        {% endif %}
+        <span class="pagination-pages">Page {{ page }} of {{ total_pages }}</span>
+        {% if page < total_pages %}
+        <a href="/recipients?page={{ page + 1 }}&sort={{ sort }}&order={{ order }}{% if search %}&search={{ search }}{% endif %}" class="pagination-btn">Next</a>
+        {% else %}
+        <span class="pagination-btn disabled">Next</span>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
+{% else %}
+<div class="empty">
+    {% if search %}
+    No recipients found matching "{{ search }}".
+    {% else %}
+    No recipients found. Start tracking emails to see recipient insights.
+    {% endif %}
+</div>
+{% endif %}
+{% endblock %}

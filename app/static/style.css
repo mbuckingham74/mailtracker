@@ -811,3 +811,292 @@ a.recipient-row:hover {
         font-size: 1.75rem;
     }
 }
+
+/* Recipients page */
+.recipients-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.recipients-header h1 {
+    margin-bottom: 0;
+}
+
+.recipients-table-container {
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    overflow: hidden;
+}
+
+.recipients-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.recipients-table th,
+.recipients-table td {
+    padding: 1rem;
+    text-align: left;
+    border-bottom: 1px solid #eee;
+}
+
+.recipients-table th {
+    background: #34495e;
+    color: white;
+    font-weight: 500;
+}
+
+.recipients-table th a.sort-header {
+    color: white;
+    text-decoration: none;
+    opacity: 0.9;
+}
+
+.recipients-table th a.sort-header:hover,
+.recipients-table th a.sort-header.active {
+    opacity: 1;
+}
+
+.recipient-row {
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.recipient-row:hover {
+    background: #f0f7ff;
+}
+
+.recipient-email {
+    font-weight: 500;
+    color: #2c3e50;
+}
+
+.text-center {
+    text-align: center;
+}
+
+.last-open-cell {
+    color: #666;
+    font-size: 0.9rem;
+}
+
+/* Engagement score badges */
+.engagement-score {
+    display: inline-block;
+    padding: 0.25rem 0.6rem;
+    border-radius: 12px;
+    font-weight: 600;
+    font-size: 0.85rem;
+    min-width: 2.5rem;
+    text-align: center;
+}
+
+.engagement-score.score-high {
+    background: #d4edda;
+    color: #155724;
+}
+
+.engagement-score.score-medium {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.engagement-score.score-low {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+/* Recipient detail page */
+.recipient-detail-header {
+    margin-bottom: 1rem;
+}
+
+.back-link {
+    color: #3498db;
+    text-decoration: none;
+    font-size: 0.95rem;
+}
+
+.back-link:hover {
+    text-decoration: underline;
+}
+
+.recipient-title-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.recipient-title h1 {
+    margin-bottom: 0.5rem;
+    word-break: break-all;
+}
+
+.engagement-label {
+    display: inline-block;
+    padding: 0.25rem 0.75rem;
+    border-radius: 4px;
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+.engagement-label.label-high {
+    background: #d4edda;
+    color: #155724;
+}
+
+.engagement-label.label-medium {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.engagement-label.label-low {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+.recipient-score-display {
+    text-align: center;
+}
+
+.engagement-score-large {
+    display: inline-block;
+    font-size: 2.5rem;
+    font-weight: 700;
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    min-width: 4rem;
+}
+
+.engagement-score-large.score-high {
+    background: #d4edda;
+    color: #155724;
+}
+
+.engagement-score-large.score-medium {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.engagement-score-large.score-low {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+/* Email history list */
+.email-history {
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    overflow: hidden;
+}
+
+.history-row {
+    display: flex;
+    align-items: center;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid #eee;
+    text-decoration: none;
+    color: inherit;
+    gap: 1rem;
+    transition: background 0.15s;
+}
+
+.history-row:last-child {
+    border-bottom: none;
+}
+
+.history-row:hover {
+    background: #f8f9fa;
+}
+
+.history-row.opened {
+    border-left: 3px solid #27ae60;
+}
+
+.history-status {
+    flex-shrink: 0;
+}
+
+.status-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    font-size: 0.8rem;
+    font-weight: bold;
+}
+
+.status-icon.opened {
+    background: #d4edda;
+    color: #155724;
+}
+
+.status-icon.unopened {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+.history-main {
+    flex: 1;
+    min-width: 0;
+}
+
+.history-subject {
+    font-weight: 500;
+    color: #2c3e50;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.history-meta {
+    font-size: 0.85rem;
+    color: #888;
+    margin-top: 0.25rem;
+}
+
+.history-open-info {
+    text-align: right;
+    flex-shrink: 0;
+    min-width: 150px;
+}
+
+.open-time {
+    color: #27ae60;
+    font-size: 0.9rem;
+}
+
+.open-count {
+    color: #888;
+    font-size: 0.85rem;
+    margin-left: 0.25rem;
+}
+
+.not-opened {
+    color: #999;
+    font-size: 0.9rem;
+}
+
+@media (max-width: 768px) {
+    .history-row {
+        flex-wrap: wrap;
+    }
+
+    .history-open-info {
+        width: 100%;
+        text-align: left;
+        margin-top: 0.5rem;
+        padding-left: 2.5rem;
+    }
+}

@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+
+{% block title %}{{ email }} - Mailtrack{% endblock %}
+
+{% block content %}
+<div class="recipient-detail-header">
+    <a href="/recipients" class="back-link">&larr; Back to Recipients</a>
+</div>
+
+<div class="recipient-title-row">
+    <div class="recipient-title">
+        <h1>{{ email }}</h1>
+        <span class="engagement-label label-{{ 'high' if score >= 80 else 'medium' if score >= 40 else 'low' }}">{{ score_label }}</span>
+    </div>
+    <div class="recipient-score-display">
+        <span class="engagement-score-large score-{{ 'high' if score >= 80 else 'medium' if score >= 40 else 'low' }}">{{ score }}</span>
+    </div>
+</div>
+
+<div class="stats-cards">
+    <div class="stat-card">
+        <div class="stat-value">{{ sent }}</div>
+        <div class="stat-label">Emails Sent</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ opened }}</div>
+        <div class="stat-label">Opened</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ open_rate }}%</div>
+        <div class="stat-label">Open Rate</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ avg_time_to_open }}</div>
+        <div class="stat-label">Avg Time to Open</div>
+    </div>
+</div>
+
+<h2>Email History</h2>
+
+{% if email_history %}
+<div class="email-history">
+    {% for item in email_history %}
+    <a href="/detail/{{ item.track.id }}" class="history-row {% if item.was_opened %}opened{% endif %}">
+        <div class="history-status">
+            {% if item.was_opened %}
+            <span class="status-icon opened">&#10003;</span>
+            {% else %}
+            <span class="status-icon unopened">&#10007;</span>
+            {% endif %}
+        </div>
+        <div class="history-main">
+            <div class="history-subject">{{ item.track.subject or '(No subject)' }}</div>
+            <div class="history-meta">Sent {{ to_local(item.track.created_at).strftime('%b %d, %Y') }}</div>
+        </div>
+        <div class="history-open-info">
+            {% if item.was_opened %}
+            <span class="open-time">Opened {{ item.first_open_display }}</span>
+            {% if item.open_count > 1 %}
+            <span class="open-count">({{ item.open_count }} times)</span>
+            {% endif %}
+            {% else %}
+            <span class="not-opened">Not opened</span>
+            {% endif %}
+        </div>
+    </a>
+    {% endfor %}
+</div>
+{% else %}
+<div class="empty">No emails sent to this recipient yet.</div>
+{% endif %}
+{% endblock %}

@@ -665,3 +665,335 @@ def _generate_date_keys(start: datetime, end: datetime, granularity: str) -> lis
                 current = current.replace(month=current.month + 1, day=1)
 
     return keys
+
+
+def _calculate_engagement_score(sent: int, opened: int, last_open: datetime, now: datetime) -> int:
+    """Calculate engagement score (0-100) for a recipient."""
+    if sent == 0:
+        return 0
+
+    # Open rate component (0-50)
+    open_rate = opened / sent
+    open_rate_score = open_rate * 50
+
+    # Recency component (0-25)
+    # Full points if opened in last 7 days, decays over 90 days
+    if last_open:
+        if last_open.tzinfo is None:
+            last_open = last_open.replace(tzinfo=timezone.utc)
+        days_ago = (now - last_open).days
+        if days_ago <= 7:
+            recency_score = 25
+        elif days_ago <= 90:
+            recency_score = 25 * (1 - (days_ago - 7) / 83)
+        else:
+            recency_score = 0
+    else:
+        recency_score = 0
+
+    # Consistency component (0-25)
+    # Based on how many different emails they've opened
+    if sent >= 3:
+        consistency_score = open_rate * 25
+    else:
+        # Not enough data, give partial credit
+        consistency_score = open_rate * 15
+
+    return round(open_rate_score + recency_score + consistency_score)
+
+
+def _get_engagement_label(score: int) -> str:
+    """Get human-readable label for engagement score."""
+    if score >= 80:
+        return "Highly Engaged"
+    elif score >= 60:
+        return "Engaged"
+    elif score >= 40:
+        return "Moderate"
+    elif score >= 20:
+        return "Low"
+    else:
+        return "Unengaged"
+
+
+def _format_time_ago(dt: datetime, now: datetime) -> str:
+    """Format a datetime as relative time (e.g., '2 hours ago')."""
+    if dt is None:
+        return "Never"
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+
+    delta = now - dt
+    seconds = delta.total_seconds()
+
+    if seconds < 60:
+        return "Just now"
+    elif seconds < 3600:
+        mins = int(seconds / 60)
+        return f"{mins} min ago" if mins == 1 else f"{mins} mins ago"
+    elif seconds < 86400:
+        hours = int(seconds / 3600)
+        return f"{hours} hr ago" if hours == 1 else f"{hours} hrs ago"
+    elif seconds < 604800:
+        days = int(seconds / 86400)
+        return f"{days} day ago" if days == 1 else f"{days} days ago"
+    elif seconds < 2592000:
+        weeks = int(seconds / 604800)
+        return f"{weeks} week ago" if weeks == 1 else f"{weeks} weeks ago"
+    else:
+        return to_local(dt).strftime("%b %d, %Y")
+
+
+@router.get("/recipients", response_class=HTMLResponse)
+async def recipients_list(
+    request: Request,
+    search: str = "",
+    sort: str = "score",
+    order: str = "desc",
+    page: int = 1,
+    db: AsyncSession = Depends(get_db)
+):
+    """List all recipients with engagement metrics."""
+    if not is_authenticated(request):
+        return RedirectResponse(url="/login", status_code=303)
+
+    now = datetime.now(timezone.utc)
+
+    # Get all tracked emails
+    result = await db.execute(select(TrackedEmail))
+    tracks = result.scalars().all()
+
+    # Get all opens
+    opens_result = await db.execute(select(Open))
+    all_opens = opens_result.scalars().all()
+
+    # Build a map of track_id -> list of real opens
+    track_opens = defaultdict(list)
+    for o in all_opens:
+        proxy_type = detect_proxy_type(o.ip_address, o.user_agent or '')
+        if not proxy_type:
+            track_opens[o.tracked_email_id].append(o)
+
+    # Aggregate by recipient email
+    recipients = {}
+    for track in tracks:
+        if not track.recipient:
+            continue
+
+        # Handle comma-separated recipients
+        recipient_emails = [e.strip().lower() for e in track.recipient.split(',')]
+
+        for email in recipient_emails:
+            if not email:
+                continue
+
+            if email not in recipients:
+                recipients[email] = {
+                    "email": email,
+                    "display_email": email,  # Keep original case for display
+                    "sent": 0,
+                    "opened": 0,
+                    "last_open": None,
+                    "track_ids": []
+                }
+
+            # Use original email for display if we haven't seen it yet
+            if recipients[email]["sent"] == 0:
+                # Find original case from track
+                for e in track.recipient.split(','):
+                    if e.strip().lower() == email:
+                        recipients[email]["display_email"] = e.strip()
+                        break
+
+            recipients[email]["sent"] += 1
+            recipients[email]["track_ids"].append(track.id)
+
+            # Check if this track was opened
+            real_opens = track_opens.get(track.id, [])
+            if real_opens:
+                recipients[email]["opened"] += 1
+                # Find earliest open
+                first_open = min(o.opened_at for o in real_opens)
+                if first_open:
+                    if first_open.tzinfo is None:
+                        first_open = first_open.replace(tzinfo=timezone.utc)
+                    if recipients[email]["last_open"] is None or first_open > recipients[email]["last_open"]:
+                        recipients[email]["last_open"] = first_open
+
+    # Calculate scores and rates
+    recipient_list = []
+    for email, data in recipients.items():
+        open_rate = (data["opened"] / data["sent"] * 100) if data["sent"] > 0 else 0
+        score = _calculate_engagement_score(data["sent"], data["opened"], data["last_open"], now)
+
+        recipient_list.append({
+            "email": data["display_email"],
+            "email_lower": email,
+            "sent": data["sent"],
+            "opened": data["opened"],
+            "open_rate": round(open_rate, 1),
+            "last_open": data["last_open"],
+            "last_open_display": _format_time_ago(data["last_open"], now),
+            "score": score,
+            "score_label": _get_engagement_label(score)
+        })
+
+    # Apply search filter
+    search = search.strip().lower()
+    if search:
+        recipient_list = [r for r in recipient_list if search in r["email_lower"]]
+
+    # Sort
+    sort_key = {
+        "email": lambda x: x["email_lower"],
+        "sent": lambda x: x["sent"],
+        "opened": lambda x: x["opened"],
+        "rate": lambda x: x["open_rate"],
+        "last_open": lambda x: x["last_open"] or datetime.min.replace(tzinfo=timezone.utc),
+        "score": lambda x: x["score"]
+    }.get(sort, lambda x: x["score"])
+
+    reverse = order == "desc"
+    recipient_list.sort(key=sort_key, reverse=reverse)
+
+    # Pagination
+    total_items = len(recipient_list)
+    total_pages = max(1, (total_items + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE)
+    if page < 1:
+        page = 1
+    if page > total_pages:
+        page = total_pages
+    start_idx = (page - 1) * ITEMS_PER_PAGE
+    end_idx = start_idx + ITEMS_PER_PAGE
+    paginated_recipients = recipient_list[start_idx:end_idx]
+
+    return templates.TemplateResponse("recipients.html", {
+        "request": request,
+        "recipients": paginated_recipients,
+        "search": search,
+        "sort": sort,
+        "order": order,
+        "page": page,
+        "total_pages": total_pages,
+        "total_items": total_items
+    })
+
+
+@router.get("/recipients/{email:path}", response_class=HTMLResponse)
+async def recipient_detail(
+    request: Request,
+    email: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """Show detailed engagement history for a single recipient."""
+    if not is_authenticated(request):
+        return RedirectResponse(url="/login", status_code=303)
+
+    now = datetime.now(timezone.utc)
+    email_lower = email.lower()
+
+    # Get all tracked emails for this recipient
+    result = await db.execute(
+        select(TrackedEmail).order_by(TrackedEmail.created_at.desc())
+    )
+    all_tracks = result.scalars().all()
+
+    # Filter to tracks for this recipient
+    tracks = []
+    display_email = email
+    for track in all_tracks:
+        if not track.recipient:
+            continue
+        recipient_emails = [e.strip().lower() for e in track.recipient.split(',')]
+        if email_lower in recipient_emails:
+            tracks.append(track)
+            # Get display email from first match
+            if display_email == email:
+                for e in track.recipient.split(','):
+                    if e.strip().lower() == email_lower:
+                        display_email = e.strip()
+                        break
+
+    if not tracks:
+        raise HTTPException(status_code=404, detail="Recipient not found")
+
+    # Get opens for all tracks
+    track_ids = [t.id for t in tracks]
+    opens_result = await db.execute(
+        select(Open).where(Open.tracked_email_id.in_(track_ids))
+    )
+    all_opens = opens_result.scalars().all()
+
+    # Build map of track_id -> real opens
+    track_opens = defaultdict(list)
+    for o in all_opens:
+        proxy_type = detect_proxy_type(o.ip_address, o.user_agent or '')
+        if not proxy_type:
+            track_opens[o.tracked_email_id].append(o)
+
+    # Calculate stats
+    sent = len(tracks)
+    opened = 0
+    last_open = None
+    time_to_open_hours = []
+
+    email_history = []
+    for track in tracks:
+        real_opens = track_opens.get(track.id, [])
+        was_opened = len(real_opens) > 0
+        first_open = None
+
+        if was_opened:
+            opened += 1
+            first_open = min(o.opened_at for o in real_opens)
+            if first_open:
+                if first_open.tzinfo is None:
+                    first_open = first_open.replace(tzinfo=timezone.utc)
+                if last_open is None or first_open > last_open:
+                    last_open = first_open
+
+                # Calculate time to open
+                created = track.created_at
+                if created:
+                    if created.tzinfo is None:
+                        created = created.replace(tzinfo=timezone.utc)
+                    delta_hours = (first_open - created).total_seconds() / 3600
+                    if delta_hours > 0:
+                        time_to_open_hours.append(delta_hours)
+
+        email_history.append({
+            "track": track,
+            "was_opened": was_opened,
+            "first_open": first_open,
+            "first_open_display": _format_time_ago(first_open, now) if first_open else None,
+            "open_count": len(real_opens)
+        })
+
+    open_rate = (opened / sent * 100) if sent > 0 else 0
+    score = _calculate_engagement_score(sent, opened, last_open, now)
+
+    # Average time to open
+    if time_to_open_hours:
+        avg_time = median(time_to_open_hours)
+        if avg_time < 1:
+            avg_time_display = f"{int(avg_time * 60)} min"
+        elif avg_time < 24:
+            avg_time_display = f"{avg_time:.1f} hrs"
+        else:
+            avg_time_display = f"{avg_time / 24:.1f} days"
+    else:
+        avg_time_display = "N/A"
+
+    return templates.TemplateResponse("recipient_detail.html", {
+        "request": request,
+        "email": display_email,
+        "sent": sent,
+        "opened": opened,
+        "open_rate": round(open_rate, 1),
+        "avg_time_to_open": avg_time_display,
+        "score": score,
+        "score_label": _get_engagement_label(score),
+        "last_open": last_open,
+        "last_open_display": _format_time_ago(last_open, now),
+        "email_history": email_history
+    })
