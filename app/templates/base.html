@@ -5,6 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Mailtrack{% endblock %}</title>
     <link rel="stylesheet" href="/static/style.css">
+    <script>
+        // Apply dark mode before page renders to prevent flash
+        if (localStorage.getItem('darkMode') === 'true') {
+            document.documentElement.classList.add('dark-mode');
+        }
+    </script>
 </head>
 <body>
     <nav>
@@ -15,11 +21,22 @@
             <a href="/">Dashboard</a>
             <a href="/analytics">Analytics</a>
             <a href="/recipients">Recipients</a>
+            <button id="dark-mode-toggle" class="dark-mode-btn" title="Toggle dark mode">
+                <span class="icon-light">&#9788;</span>
+                <span class="icon-dark">&#9790;</span>
+            </button>
             <a href="/logout">Logout</a>
         </div>
     </nav>
     <main>
         {% block content %}{% endblock %}
     </main>
+    <script>
+        const toggle = document.getElementById('dark-mode-toggle');
+        toggle.addEventListener('click', () => {
+            document.documentElement.classList.toggle('dark-mode');
+            localStorage.setItem('darkMode', document.documentElement.classList.contains('dark-mode'));
+        });
+    </script>
 </body>
 </html>

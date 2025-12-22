@@ -1,6 +1,6 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker, declarative_base
-from sqlalchemy import Column, String, Text, DateTime, Integer, ForeignKey
+from sqlalchemy import Column, String, Text, DateTime, Integer, ForeignKey, Boolean
 from sqlalchemy.sql import func
 import os
 
@@ -24,6 +24,7 @@ class TrackedEmail(Base):
     message_group_id = Column(String(36), nullable=True, index=True)  # Groups multiple recipients from same email
     created_at = Column(DateTime, server_default=func.now())
     notified_at = Column(DateTime, nullable=True)  # When email notification was sent for first real open
+    pinned = Column(Boolean, default=False, nullable=False)  # Pin important emails to top
 
 
 class Open(Base):

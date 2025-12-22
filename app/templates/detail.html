@@ -25,6 +25,14 @@
     <p class="proxy-note"><strong>Total Opens (including proxy):</strong> {{ opens|length }}</p>
 </div>
 
+<div class="notes-section">
+    <h3>Notes</h3>
+    <form action="/notes/{{ track.id }}" method="post" class="notes-form">
+        <textarea name="notes" class="notes-textarea" placeholder="Add notes about this email (e.g., 'Discussed pricing', 'Follow-up needed')...">{{ track.notes or '' }}</textarea>
+        <button type="submit" class="btn btn-primary">Save Notes</button>
+    </form>
+</div>
+
 <h2>All Opens ({{ opens|length }})</h2>
 {% if opens %}
 <table>

@@ -182,7 +182,8 @@ async def dashboard(
             "first_open": first_open,
             "first_real_open": first_real_open,
             "first_proxy_open": first_proxy_open,
-            "first_proxy_type": first_proxy_type
+            "first_proxy_type": first_proxy_type,
+            "pinned": track.pinned or False
         }
 
         # Apply filter (based on real opens, excluding proxy)
@@ -214,6 +215,8 @@ async def dashboard(
         # Get first proxy info from any recipient in the group
         proxy_tracks = [(t["first_proxy_open"], t["first_proxy_type"]) for t in group_tracks if t["first_proxy_open"]]
         first_proxy = min(proxy_tracks, key=lambda x: x[0]) if proxy_tracks else (None, None)
+        # A group is pinned if any of its tracks are pinned
+        is_pinned = any(t["pinned"] for t in group_tracks)
         tracks_with_counts.append({
             "is_group": True,
             "group_id": group_id,
@@ -225,7 +228,8 @@ async def dashboard(
             "first_open": min((t["first_open"] for t in group_tracks if t["first_open"]), default=None),
             "first_real_open": min((t["first_real_open"] for t in group_tracks if t["first_real_open"]), default=None),
             "first_proxy_open": first_proxy[0],
-            "first_proxy_type": first_proxy[1]
+            "first_proxy_type": first_proxy[1],
+            "pinned": is_pinned
         })
 
     # Add ungrouped tracks
@@ -234,6 +238,18 @@ async def dashboard(
             "is_group": False,
             **track_data
         })
+
+    # Sort by pinned first, then by created_at (most recent first)
+    def get_sort_key(item):
+        pinned = item.get("pinned", False)
+        if item.get("is_group"):
+            created = item.get("created_at")
+        else:
+            created = item.get("track").created_at if item.get("track") else None
+        ts = created.timestamp() if created else 0
+        return (not pinned, -ts)  # pinned=True becomes 0 (first), then sort by -timestamp
+
+    tracks_with_counts.sort(key=get_sort_key)
 
     # Pagination
     total_items = len(tracks_with_counts)
@@ -340,6 +356,44 @@ async def delete_track(request: Request, track_id: str, db: AsyncSession = Depen
     return RedirectResponse(url="/", status_code=303)
 
 
+@router.post("/pin/{track_id}")
+async def toggle_pin(request: Request, track_id: str, db: AsyncSession = Depends(get_db)):
+    """Toggle pinned status for a tracked email."""
+    if not is_authenticated(request):
+        return RedirectResponse(url="/login", status_code=303)
+
+    result = await db.execute(
+        select(TrackedEmail).where(TrackedEmail.id == track_id)
+    )
+    track = result.scalar_one_or_none()
+
+    if track:
+        track.pinned = not track.pinned
+        await db.commit()
+
+    # Redirect back to referer or dashboard
+    referer = request.headers.get("referer", "/")
+    return RedirectResponse(url=referer, status_code=303)
+
+
+@router.post("/notes/{track_id}")
+async def update_notes(request: Request, track_id: str, notes: str = Form(""), db: AsyncSession = Depends(get_db)):
+    """Update notes for a tracked email."""
+    if not is_authenticated(request):
+        return RedirectResponse(url="/login", status_code=303)
+
+    result = await db.execute(
+        select(TrackedEmail).where(TrackedEmail.id == track_id)
+    )
+    track = result.scalar_one_or_none()
+
+    if track:
+        track.notes = notes.strip() if notes else None
+        await db.commit()
+
+    return RedirectResponse(url=f"/detail/{track_id}", status_code=303)
+
+
 @router.get("/export")
 async def export_csv(request: Request, db: AsyncSession = Depends(get_db)):
     """Export all tracking data as CSV with one row per open event."""
@@ -402,6 +456,123 @@ async def export_csv(request: Request, db: AsyncSession = Depends(get_db)):
     output.seek(0)
     export_date = datetime.now(DISPLAY_TIMEZONE).strftime('%Y-%m-%d')
     filename = f"mailtrack_export_{export_date}.csv"
+
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
+
+
+@router.get("/analytics/export")
+async def export_analytics_csv(
+    request: Request,
+    date_range: str = "30",
+    db: AsyncSession = Depends(get_db)
+):
+    """Export analytics data as CSV."""
+    if not is_authenticated(request):
+        return RedirectResponse(url="/login", status_code=303)
+
+    # Validate date_range parameter
+    if date_range not in ("7", "30", "90", "all"):
+        date_range = "30"
+
+    # Calculate date cutoff
+    now = datetime.now(timezone.utc)
+    if date_range == "all":
+        cutoff = None
+    else:
+        days = int(date_range)
+        cutoff = now - timedelta(days=days)
+
+    # Query tracked emails
+    query = select(TrackedEmail)
+    if cutoff:
+        query = query.where(TrackedEmail.created_at >= cutoff)
+    result = await db.execute(query)
+    tracks = result.scalars().all()
+
+    # Query all opens
+    opens_query = select(Open)
+    if cutoff:
+        opens_query = opens_query.where(Open.opened_at >= cutoff)
+    opens_result = await db.execute(opens_query)
+    all_opens = opens_result.scalars().all()
+
+    # Separate real opens from proxy opens
+    real_opens = []
+    for o in all_opens:
+        proxy_type = detect_proxy_type(o.ip_address, o.user_agent or '')
+        if not proxy_type:
+            real_opens.append(o)
+
+    # Build CSV with analytics summary
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    # Summary section
+    writer.writerow(["=== Analytics Summary ==="])
+    writer.writerow(["Date Range", f"Last {date_range} days" if date_range != "all" else "All Time"])
+    writer.writerow(["Total Emails Tracked", len(tracks)])
+    writer.writerow(["Total Real Opens", len(real_opens)])
+
+    # Open rate
+    emails_with_opens = set(o.tracked_email_id for o in real_opens)
+    open_rate = (len(emails_with_opens) / len(tracks) * 100) if tracks else 0
+    writer.writerow(["Open Rate", f"{open_rate:.1f}%"])
+    writer.writerow([])
+
+    # Opens by country
+    writer.writerow(["=== Opens by Country ==="])
+    writer.writerow(["Country", "Opens"])
+    opens_by_country = defaultdict(int)
+    for o in real_opens:
+        country = o.country or "Unknown"
+        opens_by_country[country] += 1
+    for country, count in sorted(opens_by_country.items(), key=lambda x: x[1], reverse=True):
+        writer.writerow([country, count])
+    writer.writerow([])
+
+    # Opens by city
+    writer.writerow(["=== Opens by City ==="])
+    writer.writerow(["City", "Opens"])
+    opens_by_city = defaultdict(int)
+    for o in real_opens:
+        if o.city:
+            opens_by_city[f"{o.city}, {o.country or 'Unknown'}"] += 1
+    for city, count in sorted(opens_by_city.items(), key=lambda x: x[1], reverse=True)[:20]:
+        writer.writerow([city, count])
+    writer.writerow([])
+
+    # Opens by hour
+    writer.writerow(["=== Opens by Hour of Day ==="])
+    writer.writerow(["Hour", "Opens"])
+    opens_by_hour = defaultdict(int)
+    for o in real_opens:
+        if o.opened_at:
+            local_time = to_local(o.opened_at)
+            opens_by_hour[local_time.hour] += 1
+    for hour in range(24):
+        writer.writerow([f"{hour:02d}:00", opens_by_hour.get(hour, 0)])
+    writer.writerow([])
+
+    # Opens by day of week
+    writer.writerow(["=== Opens by Day of Week ==="])
+    writer.writerow(["Day", "Opens"])
+    dow_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    opens_by_dow = defaultdict(int)
+    for o in real_opens:
+        if o.opened_at:
+            local_time = to_local(o.opened_at)
+            opens_by_dow[local_time.weekday()] += 1
+    for i, day_name in enumerate(dow_names):
+        writer.writerow([day_name, opens_by_dow.get(i, 0)])
+
+    # Prepare response
+    output.seek(0)
+    export_date = datetime.now(DISPLAY_TIMEZONE).strftime('%Y-%m-%d')
+    filename = f"mailtrack_analytics_{date_range}days_{export_date}.csv"
 
     return StreamingResponse(
         iter([output.getvalue()]),

@@ -5,14 +5,17 @@
 {% block content %}
 <div class="analytics-header">
     <h1>Analytics</h1>
-    <form class="date-filter-form" method="get" action="/analytics">
-        <select name="date_range" class="filter-dropdown" onchange="this.form.submit()">
-            <option value="7" {% if date_range == "7" %}selected{% endif %}>Last 7 days</option>
-            <option value="30" {% if date_range == "30" %}selected{% endif %}>Last 30 days</option>
-            <option value="90" {% if date_range == "90" %}selected{% endif %}>Last 90 days</option>
-            <option value="all" {% if date_range == "all" %}selected{% endif %}>All time</option>
-        </select>
-    </form>
+    <div class="analytics-controls">
+        <form class="date-filter-form" method="get" action="/analytics">
+            <select name="date_range" class="filter-dropdown" onchange="this.form.submit()">
+                <option value="7" {% if date_range == "7" %}selected{% endif %}>Last 7 days</option>
+                <option value="30" {% if date_range == "30" %}selected{% endif %}>Last 30 days</option>
+                <option value="90" {% if date_range == "90" %}selected{% endif %}>Last 90 days</option>
+                <option value="all" {% if date_range == "all" %}selected{% endif %}>All time</option>
+            </select>
+        </form>
+        <a href="/analytics/export?date_range={{ date_range }}" class="export-btn">Export CSV</a>
+    </div>
 </div>
 
 <div class="stats-cards">

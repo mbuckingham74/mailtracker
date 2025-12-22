@@ -67,9 +67,15 @@ function clearSearch() {
     {% for item in tracks %}
     {% if item.is_group %}
     {# Grouped email with multiple recipients - link to first recipient's detail #}
-    <a href="/detail/{{ item.recipients[0].track.id }}" class="email-row {% if item.total_real_opens > 0 %}has-opens{% endif %}">
-        <div class="email-main">
-            <div class="email-recipients">
+    <div class="email-row-wrapper {% if item.pinned %}pinned{% endif %}">
+        <form action="/pin/{{ item.recipients[0].track.id }}" method="post" class="pin-form">
+            <button type="submit" class="pin-btn {% if item.pinned %}active{% endif %}" title="{% if item.pinned %}Unpin{% else %}Pin{% endif %}">
+                <span class="pin-icon">&#9733;</span>
+            </button>
+        </form>
+        <a href="/detail/{{ item.recipients[0].track.id }}" class="email-row {% if item.total_real_opens > 0 %}has-opens{% endif %}">
+            <div class="email-main">
+                <div class="email-recipients">
                 {% for recipient in item.recipients %}
                     {% if recipient.track.recipient %}
                         {% for email in recipient.track.recipient.split(',') %}
@@ -83,6 +89,9 @@ function clearSearch() {
                 {% endfor %}
             </div>
             <div class="email-subject">{{ item.subject or '(no subject)' }}</div>
+            {% if item.recipients[0].track.notes %}
+            <div class="notes-display">{{ item.recipients[0].track.notes }}</div>
+            {% endif %}
             <div class="email-meta">
                 Sent on {{ to_local(item.created_at).strftime('%b %d, %Y at %-I:%M %p %Z') }}
             </div>
@@ -102,11 +111,18 @@ function clearSearch() {
             {% endif %}
         </div>
     </a>
+    </div>
     {% else %}
     {# Single recipient email #}
-    <a href="/detail/{{ item.track.id }}" class="email-row clickable {% if item.real_open_count > 0 %}has-opens{% endif %}">
-        <div class="email-main">
-            <div class="email-recipients">
+    <div class="email-row-wrapper {% if item.pinned %}pinned{% endif %}">
+        <form action="/pin/{{ item.track.id }}" method="post" class="pin-form">
+            <button type="submit" class="pin-btn {% if item.pinned %}active{% endif %}" title="{% if item.pinned %}Unpin{% else %}Pin{% endif %}">
+                <span class="pin-icon">&#9733;</span>
+            </button>
+        </form>
+        <a href="/detail/{{ item.track.id }}" class="email-row clickable {% if item.real_open_count > 0 %}has-opens{% endif %}">
+            <div class="email-main">
+                <div class="email-recipients">
                 {% if item.track.recipient %}
                     {% for email in item.track.recipient.split(',') %}
                 <span class="recipient-pill {% if item.real_open_count > 0 %}opened{% endif %}" title="{{ email.strip() }}">
@@ -118,6 +134,9 @@ function clearSearch() {
                 {% endif %}
             </div>
             <div class="email-subject">{{ item.track.subject or '(no subject)' }}</div>
+            {% if item.track.notes %}
+            <div class="notes-display">{{ item.track.notes }}</div>
+            {% endif %}
             <div class="email-meta">
                 Sent on {{ to_local(item.track.created_at).strftime('%b %d, %Y at %-I:%M %p %Z') }}
             </div>
@@ -137,6 +156,7 @@ function clearSearch() {
             {% endif %}
         </div>
     </a>
+    </div>
     {% endif %}
     {% endfor %}
 </div>

@@ -470,12 +470,54 @@ tr.opened:hover {
     overflow: hidden;
 }
 
+.email-row-wrapper {
+    display: flex;
+    align-items: stretch;
+    background: white;
+}
+
+.email-row-wrapper.pinned {
+    background: #fffbeb;
+    border-left: 3px solid #f59e0b;
+}
+
+.pin-form {
+    display: flex;
+    align-items: center;
+    padding: 0 0.5rem;
+}
+
+.pin-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0.5rem;
+    color: #ccc;
+    font-size: 1.2rem;
+    transition: color 0.2s, transform 0.2s;
+    line-height: 1;
+}
+
+.pin-btn:hover {
+    color: #f59e0b;
+    transform: scale(1.1);
+}
+
+.pin-btn.active {
+    color: #f59e0b;
+}
+
+.pin-btn.active:hover {
+    color: #d97706;
+}
+
 .email-row {
     display: flex;
     align-items: center;
     padding: 1rem 1.25rem;
-    background: white;
+    background: transparent;
     gap: 1.5rem;
+    flex: 1;
 }
 
 .email-row:hover {
@@ -703,6 +745,29 @@ a.recipient-row:hover {
 
 .analytics-header h1 {
     margin-bottom: 0;
+}
+
+.analytics-controls {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.export-btn {
+    padding: 0.5rem 1rem;
+    font-size: 0.9rem;
+    border: 1px solid #3498db;
+    border-radius: 4px;
+    background: #3498db;
+    color: white;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s;
+}
+
+.export-btn:hover {
+    background: #2980b9;
+    border-color: #2980b9;
 }
 
 .date-filter-form {
@@ -1098,5 +1163,400 @@ a.recipient-row:hover {
         text-align: left;
         margin-top: 0.5rem;
         padding-left: 2.5rem;
+    }
+}
+
+/* Dark mode toggle button */
+.dark-mode-btn {
+    background: transparent;
+    border: 1px solid rgba(255,255,255,0.3);
+    border-radius: 4px;
+    color: white;
+    cursor: pointer;
+    padding: 0.4rem 0.6rem;
+    font-size: 1rem;
+    margin-left: 1rem;
+    transition: background 0.2s;
+}
+
+.dark-mode-btn:hover {
+    background: rgba(255,255,255,0.1);
+}
+
+.dark-mode-btn .icon-dark {
+    display: none;
+}
+
+html.dark-mode .dark-mode-btn .icon-light {
+    display: none;
+}
+
+html.dark-mode .dark-mode-btn .icon-dark {
+    display: inline;
+}
+
+/* Pinned email styles */
+.pinned-indicator {
+    color: #f39c12;
+    margin-right: 0.5rem;
+    font-size: 0.9rem;
+}
+
+.pin-btn {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-size: 1.1rem;
+    padding: 0.25rem;
+    opacity: 0.4;
+    transition: opacity 0.2s;
+}
+
+.pin-btn:hover {
+    opacity: 1;
+}
+
+.pin-btn.pinned {
+    opacity: 1;
+    color: #f39c12;
+}
+
+/* Notes styles */
+.notes-section {
+    background: white;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 1.25rem;
+    margin-bottom: 1.5rem;
+}
+
+.notes-section h3 {
+    margin: 0 0 0.75rem 0;
+    color: #2c3e50;
+    font-size: 1rem;
+}
+
+.notes-display {
+    font-size: 0.85rem;
+    color: #666;
+    font-style: italic;
+    margin-top: 0.25rem;
+    max-width: 300px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.notes-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.notes-textarea {
+    width: 100%;
+    min-height: 80px;
+    padding: 0.75rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-family: inherit;
+    font-size: 0.9rem;
+    resize: vertical;
+}
+
+.notes-textarea:focus {
+    outline: none;
+    border-color: #3498db;
+}
+
+.notes-actions {
+    margin-top: 0.5rem;
+    display: flex;
+    gap: 0.5rem;
+}
+
+/* Export button */
+.export-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+/* Dark Mode Styles */
+html.dark-mode {
+    color-scheme: dark;
+}
+
+html.dark-mode body {
+    background: #1a1a2e;
+    color: #e0e0e0;
+}
+
+html.dark-mode nav {
+    background: #16213e;
+}
+
+html.dark-mode main {
+    color: #e0e0e0;
+}
+
+html.dark-mode h1,
+html.dark-mode h2,
+html.dark-mode h3 {
+    color: #f0f0f0;
+}
+
+html.dark-mode .stat-card,
+html.dark-mode .chart-container,
+html.dark-mode .email-list,
+html.dark-mode .email-row,
+html.dark-mode .recipients-table-container,
+html.dark-mode .email-history,
+html.dark-mode .track-info,
+html.dark-mode .track-metadata,
+html.dark-mode .code-block,
+html.dark-mode .pagination {
+    background: #0f3460;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+}
+
+html.dark-mode .stat-value {
+    color: #f0f0f0;
+}
+
+html.dark-mode .stat-label {
+    color: #aaa;
+}
+
+html.dark-mode table th {
+    background: #1a1a2e;
+}
+
+html.dark-mode table td {
+    border-bottom-color: #2a2a4e;
+}
+
+html.dark-mode .recipients-table th {
+    background: #1a1a2e;
+}
+
+html.dark-mode .recipients-table td {
+    border-bottom-color: #2a2a4e;
+}
+
+html.dark-mode .recipient-row:hover,
+html.dark-mode .history-row:hover,
+html.dark-mode a.email-row:hover {
+    background: #1a3a6e;
+}
+
+html.dark-mode .email-row {
+    background: transparent;
+}
+
+html.dark-mode .email-row-wrapper {
+    background: #0f3460;
+    border-color: #2a2a4e;
+}
+
+html.dark-mode .email-row-wrapper.pinned {
+    background: #2a1f0a;
+    border-left-color: #f59e0b;
+}
+
+html.dark-mode .pin-btn {
+    color: #555;
+}
+
+html.dark-mode .pin-btn:hover {
+    color: #f59e0b;
+}
+
+html.dark-mode .pin-btn.active {
+    color: #f59e0b;
+}
+
+html.dark-mode .history-row {
+    background: #0f3460;
+    border-bottom-color: #2a2a4e;
+}
+
+html.dark-mode .email-subject,
+html.dark-mode .history-subject,
+html.dark-mode .recipient-email {
+    color: #f0f0f0;
+}
+
+html.dark-mode .email-meta,
+html.dark-mode .history-meta,
+html.dark-mode .last-open-cell {
+    color: #999;
+}
+
+html.dark-mode .filter-dropdown,
+html.dark-mode .search-input {
+    background: #1a1a2e;
+    border-color: #3a3a5e;
+    color: #e0e0e0;
+}
+
+html.dark-mode .notes-section {
+    background: #0f3460;
+    border-color: #2a2a4e;
+}
+
+html.dark-mode .notes-section h3 {
+    color: #e0e0e0;
+}
+
+html.dark-mode .notes-textarea {
+    background: #1a1a2e;
+    border-color: #3a3a5e;
+    color: #e0e0e0;
+}
+
+html.dark-mode .filter-dropdown:focus,
+html.dark-mode .search-input:focus,
+html.dark-mode .notes-textarea:focus {
+    border-color: #3498db;
+}
+
+html.dark-mode .empty {
+    background: #0f3460;
+    color: #999;
+}
+
+html.dark-mode .code-block pre {
+    background: #1a1a2e;
+}
+
+html.dark-mode .recipient-pill {
+    background: #1a1a2e;
+    border-color: #3a3a5e;
+    color: #ccc;
+}
+
+html.dark-mode .recipient-pill.opened {
+    background: #1a4a2e;
+    border-color: #2a6a4e;
+    color: #8f8;
+}
+
+html.dark-mode .notes-display {
+    color: #999;
+}
+
+html.dark-mode .cities-table th {
+    background: #1a1a2e;
+}
+
+html.dark-mode .cities-table tr:hover {
+    background: #1a3a6e;
+}
+
+html.dark-mode .export-btn {
+    background: #0f3460;
+    border-color: #3498db;
+    color: #e0e0e0;
+}
+
+html.dark-mode .export-btn:hover {
+    background: #1a3a6e;
+    border-color: #5dade2;
+}
+
+/* Additional mobile improvements */
+@media (max-width: 768px) {
+    nav {
+        flex-direction: column;
+        padding: 1rem;
+        gap: 1rem;
+    }
+
+    .nav-logo {
+        height: 50px;
+    }
+
+    .nav-links {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 0.5rem;
+    }
+
+    .nav-links a,
+    .dark-mode-btn {
+        margin-left: 0;
+        font-size: 0.85rem;
+    }
+
+    main {
+        padding: 0 0.5rem;
+    }
+
+    h1 {
+        font-size: 1.5rem;
+    }
+
+    .dashboard-header,
+    .analytics-header,
+    .recipients-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .filter-row {
+        width: 100%;
+    }
+
+    .search-form {
+        width: 100%;
+    }
+
+    .search-input {
+        flex: 1;
+        width: auto;
+    }
+
+    .recipients-table {
+        font-size: 0.85rem;
+    }
+
+    .recipients-table th,
+    .recipients-table td {
+        padding: 0.75rem 0.5rem;
+    }
+
+    .email-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.5rem;
+    }
+
+    .email-stats {
+        text-align: left;
+        min-width: auto;
+    }
+
+    .detail-header {
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    .detail-actions {
+        width: 100%;
+        justify-content: flex-start;
+    }
+
+    .recipient-title-row {
+        flex-direction: column;
+    }
+
+    .recipient-score-display {
+        align-self: flex-start;
+    }
+
+    .chart-grid {
+        grid-template-columns: 1fr;
     }
 }
