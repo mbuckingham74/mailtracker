@@ -5,7 +5,7 @@ from sqlalchemy import select, func
 from ..database import get_db, TrackedEmail, Open
 from ..geoip import lookup_ip
 from ..proxy_detection import detect_proxy_type
-from ..notifications import send_open_notification, send_hot_conversation_notification, is_email_notifications_enabled
+from ..notifications import send_open_notification, send_hot_conversation_notification, send_revived_conversation_notification, is_email_notifications_enabled
 import base64
 import logging
 from datetime import datetime, timezone, timedelta
@@ -144,6 +144,43 @@ async def track_pixel(
                                 )
                             except Exception as hot_error:
                                 logger.error(f"Failed to send hot conversation notification for {tracking_id}: {hot_error}")
+
+                    # Check for revived conversation (open 2+ weeks after first open)
+                    # Re-fetch to get current state after potential hot notification update
+                    result = await db.execute(
+                        select(TrackedEmail).where(TrackedEmail.id == tracking_id)
+                    )
+                    tracked_email_fresh = result.scalar_one_or_none()
+
+                    if tracked_email_fresh and tracked_email_fresh.revived_notified_at is None:
+                        # Get the first open timestamp
+                        first_open_result = await db.execute(
+                            select(func.min(Open.opened_at))
+                            .where(Open.tracked_email_id == tracking_id)
+                        )
+                        first_open_at = first_open_result.scalar()
+
+                        if first_open_at:
+                            # Handle naive datetime
+                            if first_open_at.tzinfo is None:
+                                first_open_at = first_open_at.replace(tzinfo=timezone.utc)
+
+                            days_since_first_open = (now - first_open_at).days
+
+                            if days_since_first_open >= 14:
+                                # Mark as notified first
+                                tracked_email_fresh.revived_notified_at = now
+                                await db.commit()
+
+                                try:
+                                    send_revived_conversation_notification(
+                                        recipient=email_recipient,
+                                        subject=email_subject,
+                                        days_since_first_open=days_since_first_open,
+                                        track_id=tracking_id
+                                    )
+                                except Exception as revived_error:
+                                    logger.error(f"Failed to send revived conversation notification for {tracking_id}: {revived_error}")
     except Exception as e:
         # Log the error but don't break pixel delivery
         logger.exception(f"Failed to record open for tracking_id={tracking_id}: {e}")

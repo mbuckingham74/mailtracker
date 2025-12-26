@@ -304,3 +304,77 @@ Subject: {subject or '(no subject)'}
     except Exception as e:
         logger.error(f"Failed to send hot conversation notification: {e}")
         return False
+
+
+def send_revived_conversation_notification(
+    recipient: str,
+    subject: str,
+    days_since_first_open: int,
+    track_id: str
+) -> bool:
+    """
+    Send email notification when an old email is opened again after 2+ weeks.
+
+    Returns True if email was sent successfully, False otherwise.
+    """
+    if not is_email_notifications_enabled():
+        logger.warning("Email notifications not configured - skipping revived conversation notification")
+        return False
+
+    recipient_name = recipient.split('@')[0] if recipient else 'Someone'
+
+    # Format the email
+    email_subject = f"🔄 Old conversation revived! {recipient_name} re-opened your email after {days_since_first_open} days"
+
+    html_body = f"""
+    <html>
+    <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 20px;">
+        <h2 style="color: #9b59b6;">🔄 Old conversation revived!</h2>
+        <p style="font-size: 18px; color: #333;">
+            <strong>{recipient_name}</strong> just re-opened your email from <strong>{days_since_first_open} days ago</strong>.
+        </p>
+        <p style="color: #555;">They're thinking about this again - might be worth reaching out!</p>
+        <table style="border-collapse: collapse; margin-top: 15px;">
+            <tr>
+                <td style="padding: 8px 15px 8px 0; color: #666; font-weight: bold;">To:</td>
+                <td style="padding: 8px 0;">{recipient or 'Unknown'}</td>
+            </tr>
+            <tr>
+                <td style="padding: 8px 15px 8px 0; color: #666; font-weight: bold;">Subject:</td>
+                <td style="padding: 8px 0;">{subject or '(no subject)'}</td>
+            </tr>
+        </table>
+    </body>
+    </html>
+    """
+
+    text_body = f"""
+🔄 Old conversation revived!
+
+{recipient_name} just re-opened your email from {days_since_first_open} days ago.
+They're thinking about this again - might be worth reaching out!
+
+To: {recipient or 'Unknown'}
+Subject: {subject or '(no subject)'}
+    """
+
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = email_subject
+        msg["From"] = SMTP_USERNAME
+        msg["To"] = NOTIFICATION_EMAIL
+
+        msg.attach(MIMEText(text_body, "plain"))
+        msg.attach(MIMEText(html_body, "html"))
+
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+            server.starttls()
+            server.login(SMTP_USERNAME, SMTP_PASSWORD)
+            server.sendmail(SMTP_USERNAME, NOTIFICATION_EMAIL, msg.as_string())
+
+        logger.info(f"Revived conversation notification sent for track {track_id}")
+        return True
+
+    except Exception as e:
+        logger.error(f"Failed to send revived conversation notification: {e}")
+        return False
