@@ -70,6 +70,7 @@ async def track_pixel(
                 # Capture values BEFORE any commits (SQLAlchemy expires objects after commit)
                 email_recipient = tracked_email.recipient or "Unknown"
                 email_subject = tracked_email.subject or "(no subject)"
+                email_sent_at = created_at  # Already has timezone info from above
                 should_notify = (
                     tracked_email.notified_at is None and
                     is_email_notifications_enabled() and
@@ -102,7 +103,8 @@ async def track_pixel(
                             opened_at=now,
                             country=country,
                             city=city,
-                            track_id=tracking_id
+                            track_id=tracking_id,
+                            sent_at=email_sent_at
                         )
                     except Exception as notify_error:
                         logger.error(f"Failed to send notification for {tracking_id}: {notify_error}")

@@ -8,6 +8,36 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
+
+def format_time_elapsed(sent_at: datetime, opened_at: datetime) -> str:
+    """Format the time elapsed between sending and opening in a human-readable way."""
+    delta = opened_at - sent_at
+    total_seconds = int(delta.total_seconds())
+
+    if total_seconds < 0:
+        return "immediately"
+
+    days = total_seconds // 86400
+    hours = (total_seconds % 86400) // 3600
+    minutes = (total_seconds % 3600) // 60
+    seconds = total_seconds % 60
+
+    parts = []
+
+    if days > 0:
+        parts.append(f"{days} day{'s' if days != 1 else ''}")
+    if hours > 0:
+        parts.append(f"{hours} hour{'s' if hours != 1 else ''}")
+    if minutes > 0 and days == 0:  # Only show minutes if less than a day
+        parts.append(f"{minutes} minute{'s' if minutes != 1 else ''}")
+    if seconds > 0 and days == 0 and hours == 0:  # Only show seconds if less than an hour
+        parts.append(f"{seconds} second{'s' if seconds != 1 else ''}")
+
+    if not parts:
+        return "immediately"
+
+    return ", ".join(parts)
+
 # SMTP configuration from environment
 SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.gmail.com")
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
@@ -27,7 +57,8 @@ def send_open_notification(
     opened_at: datetime,
     country: str | None,
     city: str | None,
-    track_id: str
+    track_id: str,
+    sent_at: datetime | None = None
 ) -> bool:
     """
     Send email notification when an email is opened.
@@ -46,13 +77,21 @@ def send_open_notification(
         location_parts.append(country)
     location = ", ".join(location_parts) if location_parts else "Unknown location"
 
+    # Calculate time elapsed
+    recipient_name = recipient.split('@')[0] if recipient else 'Someone'
+    elapsed = format_time_elapsed(sent_at, opened_at) if sent_at else None
+
     # Format the email
-    email_subject = f"Email Opened: {subject or '(no subject)'}"
+    if elapsed:
+        email_subject = f"{recipient_name} read your message {elapsed} after you sent it"
+    else:
+        email_subject = f"{recipient_name} read your message: {subject or '(no subject)'}"
 
     html_body = f"""
     <html>
     <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 20px;">
-        <h2 style="color: #27ae60;">Your email was opened!</h2>
+        <h2 style="color: #27ae60;">{recipient_name} read your message!</h2>
+        {f'<p style="font-size: 18px; color: #333;"><strong>{elapsed}</strong> after you sent it</p>' if elapsed else ''}
         <table style="border-collapse: collapse; margin-top: 15px;">
             <tr>
                 <td style="padding: 8px 15px 8px 0; color: #666; font-weight: bold;">To:</td>
@@ -79,7 +118,8 @@ def send_open_notification(
     """
 
     text_body = f"""
-Your email was opened!
+{recipient_name} read your message!
+{f"{elapsed} after you sent it" if elapsed else ""}
 
 To: {recipient or 'Unknown'}
 Subject: {subject or '(no subject)'}
