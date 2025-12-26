@@ -1,14 +1,14 @@
 from fastapi import APIRouter, Request, Depends, BackgroundTasks
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from ..database import get_db, TrackedEmail, Open
 from ..geoip import lookup_ip
 from ..proxy_detection import detect_proxy_type
-from ..notifications import send_open_notification, is_email_notifications_enabled
+from ..notifications import send_open_notification, send_hot_conversation_notification, is_email_notifications_enabled
 import base64
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 logger = logging.getLogger(__name__)
 
@@ -108,6 +108,42 @@ async def track_pixel(
                         )
                     except Exception as notify_error:
                         logger.error(f"Failed to send notification for {tracking_id}: {notify_error}")
+
+                # Check for hot conversation (3+ real opens in 24 hours)
+                # Only check if this was a real open (not proxy) and we haven't already notified
+                is_real_open = detect_proxy_type(ip_address, user_agent) is None
+                if is_real_open and is_email_notifications_enabled():
+                    # Re-fetch tracked_email to check hot_notified_at
+                    result = await db.execute(
+                        select(TrackedEmail).where(TrackedEmail.id == tracking_id)
+                    )
+                    tracked_email_fresh = result.scalar_one_or_none()
+
+                    if tracked_email_fresh and tracked_email_fresh.hot_notified_at is None:
+                        # Count real opens in last 24 hours (excluding proxy opens is hard,
+                        # so we count all opens - proxy opens are relatively rare)
+                        twenty_four_hours_ago = now - timedelta(hours=24)
+                        count_result = await db.execute(
+                            select(func.count(Open.id))
+                            .where(Open.tracked_email_id == tracking_id)
+                            .where(Open.opened_at >= twenty_four_hours_ago)
+                        )
+                        open_count = count_result.scalar() or 0
+
+                        if open_count >= 3:
+                            # Mark as notified first
+                            tracked_email_fresh.hot_notified_at = now
+                            await db.commit()
+
+                            try:
+                                send_hot_conversation_notification(
+                                    recipient=email_recipient,
+                                    subject=email_subject,
+                                    open_count=open_count,
+                                    track_id=tracking_id
+                                )
+                            except Exception as hot_error:
+                                logger.error(f"Failed to send hot conversation notification for {tracking_id}: {hot_error}")
     except Exception as e:
         # Log the error but don't break pixel delivery
         logger.exception(f"Failed to record open for tracking_id={tracking_id}: {e}")

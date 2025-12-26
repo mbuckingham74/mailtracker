@@ -26,6 +26,7 @@ class TrackedEmail(Base):
     notified_at = Column(DateTime, nullable=True)  # When email notification was sent for first real open
     pinned = Column(Boolean, default=False, nullable=False)  # Pin important emails to top
     followup_notified_at = Column(DateTime, nullable=True)  # When follow-up reminder was sent for unopened email
+    hot_notified_at = Column(DateTime, nullable=True)  # When "hot conversation" notification was sent (3+ opens in 24h)
 
 
 class Open(Base):
