@@ -7,9 +7,10 @@ from typing import Optional, Tuple
 import geoip2.database
 import geoip2.errors
 
+from .config import settings
+
 GEOIP_DIR = Path("/app/data/geoip")
 DB_PATH = GEOIP_DIR / "GeoLite2-City.mmdb"
-MAXMIND_LICENSE_KEY = os.getenv("MAXMIND_LICENSE_KEY", "")
 
 # Global reader instance
 _reader: Optional[geoip2.database.Reader] = None
@@ -19,13 +20,13 @@ def get_download_url() -> str:
     """Get MaxMind download URL for GeoLite2-City database."""
     return (
         f"https://download.maxmind.com/app/geoip_download?"
-        f"edition_id=GeoLite2-City&license_key={MAXMIND_LICENSE_KEY}&suffix=tar.gz"
+        f"edition_id=GeoLite2-City&license_key={settings.maxmind_license_key}&suffix=tar.gz"
     )
 
 
 async def download_database() -> bool:
     """Download and extract the GeoLite2-City database."""
-    if not MAXMIND_LICENSE_KEY:
+    if not settings.maxmind_license_key:
         print("MAXMIND_LICENSE_KEY not set, skipping GeoIP database download")
         return False
 

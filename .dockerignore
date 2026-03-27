@@ -1,0 +1,12 @@
+.git
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+.env
+.env.mysql
+.claude/
+AGENTS.md
+CLAUDE.md
+Claude*.md
+mailtrack-implementation-plan.md

@@ -1,10 +1,11 @@
 """Email notification module for open alerts."""
-import os
 import smtplib
 import logging
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime
+
+from .config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -38,17 +39,9 @@ def format_time_elapsed(sent_at: datetime, opened_at: datetime) -> str:
 
     return ", ".join(parts)
 
-# SMTP configuration from environment
-SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.gmail.com")
-SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
-SMTP_USERNAME = os.getenv("SMTP_USERNAME", "")
-SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
-NOTIFICATION_EMAIL = os.getenv("NOTIFICATION_EMAIL", "")
-
-
 def is_email_notifications_enabled() -> bool:
     """Check if email notifications are configured."""
-    return bool(SMTP_USERNAME and SMTP_PASSWORD and NOTIFICATION_EMAIL)
+    return bool(settings.smtp_username and settings.smtp_password and settings.notification_email)
 
 
 def send_open_notification(
@@ -132,16 +125,16 @@ This is the first real open (excluding email privacy proxies).
     try:
         msg = MIMEMultipart("alternative")
         msg["Subject"] = email_subject
-        msg["From"] = SMTP_USERNAME
-        msg["To"] = NOTIFICATION_EMAIL
+        msg["From"] = settings.smtp_username
+        msg["To"] = settings.notification_email
 
         msg.attach(MIMEText(text_body, "plain"))
         msg.attach(MIMEText(html_body, "html"))
 
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+        with smtplib.SMTP(settings.smtp_server, settings.smtp_port) as server:
             server.starttls()
-            server.login(SMTP_USERNAME, SMTP_PASSWORD)
-            server.sendmail(SMTP_USERNAME, NOTIFICATION_EMAIL, msg.as_string())
+            server.login(settings.smtp_username, settings.smtp_password)
+            server.sendmail(settings.smtp_username, settings.notification_email, msg.as_string())
 
         logger.info(f"Open notification sent for track {track_id}")
         return True
@@ -213,16 +206,16 @@ This email has not been opened (excluding automated proxy prefetches).
     try:
         msg = MIMEMultipart("alternative")
         msg["Subject"] = email_subject
-        msg["From"] = SMTP_USERNAME
-        msg["To"] = NOTIFICATION_EMAIL
+        msg["From"] = settings.smtp_username
+        msg["To"] = settings.notification_email
 
         msg.attach(MIMEText(text_body, "plain"))
         msg.attach(MIMEText(html_body, "html"))
 
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+        with smtplib.SMTP(settings.smtp_server, settings.smtp_port) as server:
             server.starttls()
-            server.login(SMTP_USERNAME, SMTP_PASSWORD)
-            server.sendmail(SMTP_USERNAME, NOTIFICATION_EMAIL, msg.as_string())
+            server.login(settings.smtp_username, settings.smtp_password)
+            server.sendmail(settings.smtp_username, settings.notification_email, msg.as_string())
 
         logger.info(f"Follow-up reminder sent for track {track_id}")
         return True
@@ -287,16 +280,16 @@ Subject: {subject or '(no subject)'}
     try:
         msg = MIMEMultipart("alternative")
         msg["Subject"] = email_subject
-        msg["From"] = SMTP_USERNAME
-        msg["To"] = NOTIFICATION_EMAIL
+        msg["From"] = settings.smtp_username
+        msg["To"] = settings.notification_email
 
         msg.attach(MIMEText(text_body, "plain"))
         msg.attach(MIMEText(html_body, "html"))
 
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+        with smtplib.SMTP(settings.smtp_server, settings.smtp_port) as server:
             server.starttls()
-            server.login(SMTP_USERNAME, SMTP_PASSWORD)
-            server.sendmail(SMTP_USERNAME, NOTIFICATION_EMAIL, msg.as_string())
+            server.login(settings.smtp_username, settings.smtp_password)
+            server.sendmail(settings.smtp_username, settings.notification_email, msg.as_string())
 
         logger.info(f"Hot conversation notification sent for track {track_id}")
         return True
@@ -361,16 +354,16 @@ Subject: {subject or '(no subject)'}
     try:
         msg = MIMEMultipart("alternative")
         msg["Subject"] = email_subject
-        msg["From"] = SMTP_USERNAME
-        msg["To"] = NOTIFICATION_EMAIL
+        msg["From"] = settings.smtp_username
+        msg["To"] = settings.notification_email
 
         msg.attach(MIMEText(text_body, "plain"))
         msg.attach(MIMEText(html_body, "html"))
 
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+        with smtplib.SMTP(settings.smtp_server, settings.smtp_port) as server:
             server.starttls()
-            server.login(SMTP_USERNAME, SMTP_PASSWORD)
-            server.sendmail(SMTP_USERNAME, NOTIFICATION_EMAIL, msg.as_string())
+            server.login(settings.smtp_username, settings.smtp_password)
+            server.sendmail(settings.smtp_username, settings.notification_email, msg.as_string())
 
         logger.info(f"Revived conversation notification sent for track {track_id}")
         return True

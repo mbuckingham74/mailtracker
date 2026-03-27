@@ -1,17 +1,9 @@
 import ipaddress
-import os
 from typing import Iterable
 
 from fastapi import Request
 
-DEFAULT_TRUSTED_PROXY_CIDRS = (
-    "127.0.0.1/32,"
-    "::1/128,"
-    "10.0.0.0/8,"
-    "172.16.0.0/12,"
-    "192.168.0.0/16,"
-    "fc00::/7"
-)
+from .config import settings
 
 
 def _parse_networks(raw_cidrs: str) -> list:
@@ -24,9 +16,7 @@ def _parse_networks(raw_cidrs: str) -> list:
     return networks
 
 
-TRUSTED_PROXY_NETWORKS = _parse_networks(
-    os.getenv("TRUSTED_PROXY_CIDRS", DEFAULT_TRUSTED_PROXY_CIDRS)
-)
+TRUSTED_PROXY_NETWORKS = _parse_networks(settings.trusted_proxy_cidrs)
 
 
 def _parse_ip(candidate: str | None):

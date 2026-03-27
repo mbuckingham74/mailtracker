@@ -1,17 +1,14 @@
 from contextlib import asynccontextmanager
+import asyncio
+import logging
+from datetime import datetime, timedelta, timezone
+
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
-from dotenv import load_dotenv
-import os
-import asyncio
-import logging
-from datetime import datetime, timezone, timedelta
 
-# Load environment variables
-load_dotenv()
-
+from .config import settings
 from .routes import pixel, api, dashboard
 from .geoip import init_geoip
 from .database import async_session, TrackedEmail, Open, check_database_health, init_database
@@ -21,17 +18,6 @@ from sqlalchemy import select
 
 logger = logging.getLogger(__name__)
 
-# Configurable follow-up reminder threshold (default 3 days)
-FOLLOWUP_DAYS = int(os.getenv("FOLLOWUP_DAYS", "3"))
-
-
-def _require_env(name: str) -> str:
-    """Get required environment variable or raise error at startup."""
-    value = os.getenv(name)
-    if not value:
-        raise RuntimeError(f"Required environment variable {name} is not set")
-    return value
-
 
 async def check_followup_reminders():
     """Check for unopened emails and send follow-up reminders."""
@@ -39,7 +25,7 @@ async def check_followup_reminders():
         return
 
     now = datetime.now(timezone.utc)
-    cutoff = now - timedelta(days=FOLLOWUP_DAYS)
+    cutoff = now - timedelta(days=settings.followup_days)
 
     async with async_session() as db:
         # Find emails older than FOLLOWUP_DAYS that haven't had a follow-up reminder
@@ -122,11 +108,10 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Mailtrack", docs_url=None, redoc_url=None, lifespan=lifespan)
 
 # Session middleware for dashboard auth with secure cookie flags
-SECRET_KEY = _require_env("SECRET_KEY")
 app.add_middleware(
     SessionMiddleware,
-    secret_key=SECRET_KEY,
-    https_only=os.getenv("COOKIE_SECURE", "true").lower() == "true",
+    secret_key=settings.secret_key,
+    https_only=settings.cookie_secure,
     same_site="lax",
 )
 

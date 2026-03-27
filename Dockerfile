@@ -6,19 +6,8 @@ WORKDIR /app
 RUN apk add --no-cache tzdata
 
 # Install dependencies
-RUN pip install --no-cache-dir \
-    fastapi \
-    uvicorn[standard] \
-    sqlalchemy \
-    aiomysql \
-    pymysql \
-    python-dotenv \
-    jinja2 \
-    python-multipart \
-    cryptography \
-    itsdangerous \
-    geoip2 \
-    httpx
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Create directory for GeoIP database
 RUN mkdir -p /app/data/geoip

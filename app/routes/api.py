@@ -5,33 +5,20 @@ from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime, timezone
 import uuid
-import os
 
+from ..config import settings
 from ..database import get_db, TrackedEmail, Open
 from ..proxy_detection import detect_proxy_type
+from ..urls import get_pixel_url
 
 router = APIRouter(prefix="/api")
-
-API_KEY = os.getenv("API_KEY")
-if not API_KEY:
-    raise RuntimeError("Required environment variable API_KEY is not set")
-
-BASE_URL = os.getenv("BASE_URL", "").rstrip("/")
-if not BASE_URL:
-    raise RuntimeError("Required environment variable BASE_URL is not set (e.g., https://mailtrack.example.com)")
 
 RECENT_REAL_OPENS_LIMIT = 50
 RECENT_OPEN_BATCH_SIZE = 200
 
-
-def get_pixel_url(track_id: str) -> str:
-    """Generate absolute pixel URL for a track."""
-    return f"{BASE_URL}/p/{track_id}.gif"
-
-
 # Auth dependency
 async def verify_api_key(x_api_key: str = Header(None)):
-    if x_api_key != API_KEY:
+    if x_api_key != settings.api_key:
         raise HTTPException(status_code=401, detail="Invalid API key")
     return True
 

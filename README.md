@@ -55,6 +55,26 @@
 
 ---
 
+## Project Layout
+
+```text
+app/
+├── config.py              # Central environment/config loading
+├── database.py            # SQLAlchemy models + startup DB checks/migrations
+├── routes/                # Thin FastAPI route handlers
+├── services/              # Business logic and data aggregation
+├── time_utils.py          # Shared timezone and relative-time helpers
+├── urls.py                # URL generation helpers
+└── web.py                 # Shared Jinja template setup
+
+scripts/
+├── deploy.sh              # Pull, rebuild, and health-check the server
+├── health.sh              # Hit the public health endpoint
+└── logs.sh                # Tail backend container logs over SSH
+```
+
+---
+
 ## Architecture
 
 ```
@@ -143,7 +163,7 @@ SECRET_KEY=your-secret-key-here
 API_KEY=your-api-key-here
 DASHBOARD_USERNAME=admin
 DASHBOARD_PASSWORD=your-password-here
-TRUSTED_PROXY_CIDRS=127.0.0.1/32,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
+TRUSTED_PROXY_CIDRS=127.0.0.1/32,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7
 
 # Notifications (optional)
 SMTP_SERVER=smtp.gmail.com
@@ -183,6 +203,28 @@ Set `TRUSTED_PROXY_CIDRS` to the address range used by your reverse proxy so for
 | `/api/opens/recent` | GET | API Key | Recent opens |
 | `/api/stats` | GET | API Key | Statistics |
 | `/health` | GET | None | Health check |
+
+---
+
+## Deployment
+
+Use the checked-in scripts instead of relying on remembered shell history:
+
+```bash
+./scripts/deploy.sh
+./scripts/health.sh
+./scripts/logs.sh
+```
+
+Each script supports overrides via environment variables:
+
+```bash
+MAILTRACK_REMOTE_HOST=michael@tachyonfuture.com
+MAILTRACK_REMOTE_PATH=/home/michael/docker-configs/mailtrack
+MAILTRACK_HEALTHCHECK_URL=https://mailtrack.tachyonfuture.com/health
+```
+
+The deploy script assumes you already pushed your local commit, then runs a remote `git pull --ff-only`, rebuilds the Docker stack, and verifies `/health`.
 
 ---
 
