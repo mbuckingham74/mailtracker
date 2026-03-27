@@ -9,13 +9,16 @@ from ..database import get_db
 from ..services.api import (
     create_track as create_track_record,
     delete_track as delete_track_record,
-    get_recent_real_opens,
     get_stats as get_api_stats,
     get_track_with_opens,
     list_track_opens as list_track_open_records,
     list_tracks as list_track_summaries,
 )
-from ..services.open_activity import TrackOpenRecord
+from ..services.open_activity import (
+    RecentRealOpenRecord,
+    TrackOpenRecord,
+    load_recent_real_open_records,
+)
 from ..urls import get_pixel_url
 
 router = APIRouter(prefix="/api")
@@ -103,6 +106,18 @@ def _build_track_response_fields(
         "open_count": open_count,
         "pixel_url": get_pixel_url(track.id),
     }
+
+
+def _build_recent_open_response(open_record: RecentRealOpenRecord) -> "RecentOpenResponse":
+    return RecentOpenResponse(
+        open_id=open_record.id,
+        opened_at=open_record.opened_at,
+        recipient=open_record.recipient,
+        subject=open_record.subject,
+        country=open_record.country,
+        city=open_record.city,
+        track_id=open_record.tracked_email_id,
+    )
 
 
 @router.get("/tracks", response_model=List[TrackResponse])
@@ -200,16 +215,5 @@ async def get_recent_opens(
     Used by Chrome extension for browser notifications.
     """
     since_dt = datetime.fromtimestamp(since, tz=timezone.utc) if since is not None else None
-    recent_opens = await get_recent_real_opens(db, since_dt)
-    return [
-        RecentOpenResponse(
-            open_id=open_record.id,
-            opened_at=open_record.opened_at,
-            recipient=tracked_email.recipient,
-            subject=tracked_email.subject,
-            country=open_record.country,
-            city=open_record.city,
-            track_id=tracked_email.id,
-        )
-        for open_record, tracked_email in recent_opens
-    ]
+    recent_opens = await load_recent_real_open_records(db, cutoff=since_dt)
+    return [_build_recent_open_response(open_record) for open_record in recent_opens]

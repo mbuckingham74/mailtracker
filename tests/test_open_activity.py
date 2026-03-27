@@ -2,6 +2,7 @@ import unittest
 from datetime import datetime, timezone
 
 from app.services.open_activity import (
+    load_recent_real_open_records,
     load_real_open_events,
     load_real_open_summaries,
     load_track_open_records,
@@ -18,6 +19,18 @@ class FakeAsyncSession:
     async def execute(self, query):
         self.queries.append(query)
         return self.rows
+
+
+class SequenceAsyncSession:
+    def __init__(self, row_batches):
+        self.row_batches = list(row_batches)
+        self.queries = []
+
+    async def execute(self, query):
+        self.queries.append(query)
+        if not self.row_batches:
+            return []
+        return self.row_batches.pop(0)
 
 
 class OpenActivityTests(unittest.IsolatedAsyncioTestCase):
@@ -139,6 +152,81 @@ class OpenActivityTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(3, summaries["track-1"].count)
         self.assertEqual(first_opened_at, summaries["track-1"].first_open_at)
         self.assertEqual(last_opened_at, summaries["track-1"].last_open_at)
+
+    async def test_load_recent_real_open_records_paginates_with_cursor(self) -> None:
+        first_opened_at = datetime(2026, 3, 27, 18, 0, tzinfo=timezone.utc)
+        second_opened_at = datetime(2026, 3, 27, 17, 0, tzinfo=timezone.utc)
+        third_opened_at = datetime(2026, 3, 27, 16, 0, tzinfo=timezone.utc)
+        db = SequenceAsyncSession([
+            [
+                (
+                    30,
+                    first_opened_at,
+                    "United States",
+                    "New York",
+                    "8.8.8.8",
+                    "Mozilla/5.0",
+                    "track-1",
+                    "alice@example.com",
+                    "Hello",
+                ),
+                (
+                    29,
+                    second_opened_at,
+                    "United States",
+                    "Boston",
+                    "1.1.1.1",
+                    "Mozilla/5.0",
+                    "track-2",
+                    "bob@example.com",
+                    "Follow up",
+                ),
+            ],
+            [
+                (
+                    28,
+                    third_opened_at,
+                    None,
+                    None,
+                    "9.9.9.9",
+                    "Mozilla/5.0",
+                    "track-3",
+                    "carol@example.com",
+                    "Checking in",
+                ),
+            ],
+        ])
+
+        records = await load_recent_real_open_records(
+            db,
+            limit=3,
+            batch_size=2,
+        )
+
+        self.assertEqual([30, 29, 28], [record.id for record in records])
+        self.assertEqual(
+            ["track-1", "track-2", "track-3"],
+            [record.tracked_email_id for record in records],
+        )
+        self.assertEqual(2, len(db.queries))
+        second_query_params = db.queries[1].compile().params
+        self.assertIn(second_opened_at, second_query_params.values())
+        self.assertIn(29, second_query_params.values())
+
+    async def test_load_recent_real_open_records_applies_since_cutoff(self) -> None:
+        since_dt = datetime(2026, 3, 27, 15, 30, tzinfo=timezone.utc)
+        db = SequenceAsyncSession([[]])
+
+        records = await load_recent_real_open_records(
+            db,
+            cutoff=since_dt,
+            limit=3,
+            batch_size=2,
+        )
+
+        self.assertEqual([], records)
+        self.assertEqual(1, len(db.queries))
+        self.assertIn(since_dt, db.queries[0].compile().params.values())
 
 
 if __name__ == "__main__":

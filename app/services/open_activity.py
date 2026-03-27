@@ -3,15 +3,17 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..database import Open
+from ..database import Open, TrackedEmail
 from ..open_snapshot import StoredOpenSnapshot, build_open_snapshot
 from ..time_utils import ensure_utc
 
 
 OpenSortOrder = Literal["asc", "desc"]
+RECENT_REAL_OPEN_LIMIT = 50
+RECENT_REAL_OPEN_BATCH_SIZE = 200
 
 
 @dataclass(frozen=True)
@@ -27,6 +29,19 @@ class RealOpenEvent:
     opened_at: datetime | None
     country: str | None = None
     city: str | None = None
+
+
+@dataclass(frozen=True)
+class RecentRealOpenRecord:
+    id: int
+    opened_at: datetime | None
+    country: str | None
+    city: str | None
+    ip_address: str | None
+    user_agent: str | None
+    tracked_email_id: str
+    recipient: str | None
+    subject: str | None
 
 
 @dataclass
@@ -193,6 +208,78 @@ async def load_real_open_summaries(
     return summaries
 
 
+async def load_recent_real_open_records(
+    db: AsyncSession,
+    *,
+    cutoff: datetime | None = None,
+    limit: int = RECENT_REAL_OPEN_LIMIT,
+    batch_size: int = RECENT_REAL_OPEN_BATCH_SIZE,
+) -> list[RecentRealOpenRecord]:
+    if limit <= 0:
+        return []
+
+    recent_opens: list[RecentRealOpenRecord] = []
+    cursor_opened_at: datetime | None = None
+    cursor_open_id: int | None = None
+
+    while len(recent_opens) < limit:
+        result = await db.execute(
+            _build_recent_real_open_query(
+                cutoff=cutoff,
+                cursor_opened_at=cursor_opened_at,
+                cursor_open_id=cursor_open_id,
+                batch_size=batch_size,
+            )
+        )
+
+        rows_fetched = 0
+        last_open_id: int | None = None
+        last_opened_at: datetime | None = None
+
+        for (
+            open_id,
+            opened_at,
+            country,
+            city,
+            ip_address,
+            user_agent,
+            tracked_email_id,
+            recipient,
+            subject,
+        ) in result:
+            rows_fetched += 1
+            last_open_id = open_id
+            last_opened_at = opened_at
+
+            recent_opens.append(
+                RecentRealOpenRecord(
+                    id=open_id,
+                    opened_at=opened_at,
+                    country=country,
+                    city=city,
+                    ip_address=ip_address,
+                    user_agent=user_agent,
+                    tracked_email_id=tracked_email_id,
+                    recipient=recipient,
+                    subject=subject,
+                )
+            )
+            if len(recent_opens) >= limit:
+                break
+
+        if rows_fetched == 0:
+            break
+        if rows_fetched < batch_size:
+            break
+        if last_opened_at is None:
+            break
+
+        cursor_opened_at = last_opened_at
+        cursor_open_id = last_open_id
+
+    return recent_opens
+
+
 def _build_track_open_records_query(
     *,
     track_ids: list[str],
@@ -287,4 +374,40 @@ def _build_real_open_query(
         query = query.where(Open.opened_at >= cutoff)
     if track_ids is not None:
         query = query.where(Open.tracked_email_id.in_(track_ids))
+    return query
+
+
+def _build_recent_real_open_query(
+    *,
+    cutoff: datetime | None = None,
+    cursor_opened_at: datetime | None = None,
+    cursor_open_id: int | None = None,
+    batch_size: int,
+):
+    query = (
+        select(
+            Open.id,
+            Open.opened_at,
+            Open.country,
+            Open.city,
+            Open.ip_address,
+            Open.user_agent,
+            TrackedEmail.id,
+            TrackedEmail.recipient,
+            TrackedEmail.subject,
+        )
+        .join(TrackedEmail, Open.tracked_email_id == TrackedEmail.id)
+        .where(Open.is_real_open.is_(True))
+        .order_by(Open.opened_at.desc(), Open.id.desc())
+        .limit(batch_size)
+    )
+    if cutoff is not None:
+        query = query.where(Open.opened_at > cutoff)
+    if cursor_opened_at is not None and cursor_open_id is not None:
+        query = query.where(
+            or_(
+                Open.opened_at < cursor_opened_at,
+                and_(Open.opened_at == cursor_opened_at, Open.id < cursor_open_id),
+            )
+        )
     return query

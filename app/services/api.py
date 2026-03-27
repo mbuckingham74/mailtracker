@@ -3,14 +3,11 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from fastapi import HTTPException
-from sqlalchemy import and_, delete, func, or_, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database import Open, TrackedEmail
 from .open_activity import TrackOpenRecord, load_track_open_records
-
-RECENT_REAL_OPENS_LIMIT = 50
-RECENT_OPEN_BATCH_SIZE = 200
 
 
 @dataclass(frozen=True)
@@ -21,23 +18,6 @@ class TrackSnapshot:
     notes: str | None
     message_group_id: str | None
     created_at: datetime | None
-
-
-@dataclass(frozen=True)
-class RecentOpenSnapshot:
-    id: int
-    opened_at: datetime | None
-    country: str | None
-    city: str | None
-    ip_address: str | None
-    user_agent: str | None
-
-
-@dataclass(frozen=True)
-class RecentOpenTrackSnapshot:
-    id: str
-    recipient: str | None
-    subject: str | None
 
 
 def _build_track_snapshot(
@@ -151,95 +131,6 @@ async def get_stats(db: AsyncSession) -> dict[str, int]:
         "total_opens": opens_result.scalar() or 0,
         "tracks_with_opens": with_opens_result.scalar() or 0,
     }
-
-
-async def get_recent_real_opens(
-    db: AsyncSession,
-    since_dt: datetime | None,
-) -> list[tuple[RecentOpenSnapshot, RecentOpenTrackSnapshot]]:
-    recent_opens: list[tuple[RecentOpenSnapshot, RecentOpenTrackSnapshot]] = []
-    cursor_opened_at: datetime | None = None
-    cursor_open_id: int | None = None
-
-    while len(recent_opens) < RECENT_REAL_OPENS_LIMIT:
-        query = (
-            select(
-                Open.id,
-                Open.opened_at,
-                Open.country,
-                Open.city,
-                Open.ip_address,
-                Open.user_agent,
-                TrackedEmail.id,
-                TrackedEmail.recipient,
-                TrackedEmail.subject,
-            )
-            .join(TrackedEmail, Open.tracked_email_id == TrackedEmail.id)
-            .where(Open.is_real_open.is_(True))
-            .order_by(Open.opened_at.desc(), Open.id.desc())
-            .limit(RECENT_OPEN_BATCH_SIZE)
-        )
-
-        if since_dt is not None:
-            query = query.where(Open.opened_at > since_dt)
-        if cursor_opened_at is not None and cursor_open_id is not None:
-            query = query.where(
-                or_(
-                    Open.opened_at < cursor_opened_at,
-                    and_(Open.opened_at == cursor_opened_at, Open.id < cursor_open_id),
-                )
-            )
-
-        result = await db.execute(query)
-        rows_fetched = 0
-        last_open_id: int | None = None
-        last_opened_at: datetime | None = None
-
-        for row in result:
-            rows_fetched += 1
-            (
-                open_id,
-                opened_at,
-                country,
-                city,
-                ip_address,
-                user_agent,
-                track_id,
-                recipient,
-                subject,
-            ) = row
-            last_open_id = open_id
-            last_opened_at = opened_at
-
-            recent_opens.append((
-                RecentOpenSnapshot(
-                    id=open_id,
-                    opened_at=opened_at,
-                    country=country,
-                    city=city,
-                    ip_address=ip_address,
-                    user_agent=user_agent,
-                ),
-                RecentOpenTrackSnapshot(
-                    id=track_id,
-                    recipient=recipient,
-                    subject=subject,
-                ),
-            ))
-            if len(recent_opens) >= RECENT_REAL_OPENS_LIMIT:
-                break
-
-        if rows_fetched == 0:
-            break
-        if rows_fetched < RECENT_OPEN_BATCH_SIZE:
-            break
-
-        if last_opened_at is None:
-            break
-        cursor_opened_at = last_opened_at
-        cursor_open_id = last_open_id
-
-    return recent_opens
 
 
 async def _get_track_or_404(db: AsyncSession, track_id: str) -> TrackSnapshot:
