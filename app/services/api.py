@@ -206,11 +206,12 @@ async def get_recent_real_opens(
             )
 
         result = await db.execute(query)
-        rows = result.all()
-        if not rows:
-            break
+        rows_fetched = 0
+        last_open_id: int | None = None
+        last_opened_at: datetime | None = None
 
-        for row in rows:
+        for row in result:
+            rows_fetched += 1
             (
                 open_id,
                 opened_at,
@@ -222,6 +223,8 @@ async def get_recent_real_opens(
                 recipient,
                 subject,
             ) = row
+            last_open_id = open_id
+            last_opened_at = opened_at
             proxy_type = detect_proxy_type(ip_address or "", user_agent or "")
             if proxy_type is not None:
                 continue
@@ -244,10 +247,11 @@ async def get_recent_real_opens(
             if len(recent_opens) >= RECENT_REAL_OPENS_LIMIT:
                 break
 
-        if len(rows) < RECENT_OPEN_BATCH_SIZE:
+        if rows_fetched == 0:
+            break
+        if rows_fetched < RECENT_OPEN_BATCH_SIZE:
             break
 
-        last_open_id, last_opened_at = rows[-1][0], rows[-1][1]
         if last_opened_at is None:
             break
         cursor_opened_at = last_opened_at

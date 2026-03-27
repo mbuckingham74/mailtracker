@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select, update
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import settings
 from ..database import TrackedEmail, async_session
@@ -12,6 +13,7 @@ from ..time_utils import ensure_utc
 from .open_activity import load_real_open_summaries
 
 logger = logging.getLogger(__name__)
+FOLLOWUP_BATCH_SIZE = 200
 
 
 @dataclass(frozen=True)
@@ -42,53 +44,64 @@ async def check_followup_reminders() -> None:
                 TrackedEmail.followup_notified_at.is_(None),
             )
         )
-        tracks = [
-            FollowupTrackSnapshot(
-                id=track_id,
-                recipient=recipient,
-                subject=subject,
-                created_at=created_at,
+        track_batch: list[FollowupTrackSnapshot] = []
+        for track_id, recipient, subject, created_at in result:
+            track_batch.append(
+                FollowupTrackSnapshot(
+                    id=track_id,
+                    recipient=recipient,
+                    subject=subject,
+                    created_at=created_at,
+                )
             )
-            for track_id, recipient, subject, created_at in result
-        ]
-        if not tracks:
-            return
+            if len(track_batch) >= FOLLOWUP_BATCH_SIZE:
+                await _process_followup_batch(db, track_batch, now)
+                track_batch = []
 
-        real_open_track_ids = set(
-            await load_real_open_summaries(db, track_ids=[track.id for track in tracks])
+        if track_batch:
+            await _process_followup_batch(db, track_batch, now)
+
+
+async def _process_followup_batch(
+    db: AsyncSession,
+    tracks: list[FollowupTrackSnapshot],
+    now: datetime,
+) -> None:
+    real_open_track_ids = set(
+        await load_real_open_summaries(db, track_ids=[track.id for track in tracks])
+    )
+
+    already_opened_track_ids = [track.id for track in tracks if track.id in real_open_track_ids]
+    if already_opened_track_ids:
+        await db.execute(
+            update(TrackedEmail)
+            .where(TrackedEmail.id.in_(already_opened_track_ids))
+            .values(followup_notified_at=now)
         )
+        await db.commit()
 
-        already_opened_track_ids = [track.id for track in tracks if track.id in real_open_track_ids]
-        if already_opened_track_ids:
+    for track in tracks:
+        if track.id in real_open_track_ids:
+            continue
+
+        created_at = ensure_utc(track.created_at)
+        if created_at is None:
+            continue
+
+        days_ago = (now - created_at).days
+        success = await asyncio.to_thread(
+            send_followup_reminder,
+            recipient=track.recipient,
+            subject=track.subject,
+            sent_at=created_at,
+            days_ago=days_ago,
+            track_id=track.id,
+        )
+        if success:
             await db.execute(
                 update(TrackedEmail)
-                .where(TrackedEmail.id.in_(already_opened_track_ids))
+                .where(TrackedEmail.id == track.id)
                 .values(followup_notified_at=now)
             )
             await db.commit()
-
-        for track in tracks:
-            if track.id in real_open_track_ids:
-                continue
-
-            created_at = ensure_utc(track.created_at)
-            if created_at is None:
-                continue
-
-            days_ago = (now - created_at).days
-            success = await asyncio.to_thread(
-                send_followup_reminder,
-                recipient=track.recipient,
-                subject=track.subject,
-                sent_at=created_at,
-                days_ago=days_ago,
-                track_id=track.id,
-            )
-            if success:
-                await db.execute(
-                    update(TrackedEmail)
-                    .where(TrackedEmail.id == track.id)
-                    .values(followup_notified_at=now)
-                )
-                await db.commit()
-                logger.info("Follow-up reminder sent for track %s", track.id)
+            logger.info("Follow-up reminder sent for track %s", track.id)

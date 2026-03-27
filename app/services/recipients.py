@@ -8,11 +8,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database import TrackedEmail
 from ..time_utils import ensure_utc, format_duration_hours, format_time_ago
-from .open_activity import TrackRealOpenSummary, load_real_open_summaries
+from .open_activity import load_real_open_summaries
 
 ITEMS_PER_PAGE = 25
 VALID_SORTS = {"email", "sent", "opened", "rate", "last_open", "score"}
 VALID_ORDERS = {"asc", "desc"}
+RECIPIENT_SUMMARY_BATCH_SIZE = 500
 
 
 @dataclass(frozen=True)
@@ -39,12 +40,11 @@ async def build_recipients_context(
 ) -> dict:
     now = datetime.now(timezone.utc)
     raw_search = search.strip()
-    tracks, real_open_summaries = await _load_recipient_tracks_and_real_open_summaries(
+    recipient_list = await _load_recipient_list(
         db,
         search=raw_search,
+        now=now,
     )
-
-    recipient_list = _build_recipient_list(tracks, real_open_summaries, now)
     search = raw_search.lower()
     if search:
         recipient_list = [recipient for recipient in recipient_list if search in recipient["email_lower"]]
@@ -85,29 +85,23 @@ async def build_recipient_detail_context(db: AsyncSession, email: str) -> dict:
         .where(TrackedEmail.recipient.ilike(search_pattern))
         .order_by(TrackedEmail.created_at.desc())
     )
-    candidate_tracks = [
-        RecipientDetailTrackSnapshot(
+
+    tracks = []
+    display_email = email
+    for track_id, recipient, subject, created_at in result:
+        display_match = _match_recipient_email(recipient, email_lower)
+        if display_match is None:
+            continue
+
+        track = RecipientDetailTrackSnapshot(
             id=track_id,
             recipient=recipient,
             subject=subject,
             created_at=created_at,
         )
-        for track_id, recipient, subject, created_at in result
-    ]
-
-    tracks = []
-    display_email = email
-    for track in candidate_tracks:
-        recipient_candidates = _split_recipient_emails(track.recipient)
-        if email_lower not in {candidate_lower for _, candidate_lower in recipient_candidates}:
-            continue
-
         tracks.append(track)
         if display_email == email:
-            for candidate, candidate_lower in recipient_candidates:
-                if candidate_lower == email_lower:
-                    display_email = candidate
-                    break
+            display_email = display_match
 
     if not tracks:
         raise HTTPException(status_code=404, detail="Recipient not found")
@@ -164,32 +158,39 @@ async def build_recipient_detail_context(db: AsyncSession, email: str) -> dict:
     }
 
 
-async def _load_recipient_tracks_and_real_open_summaries(
+async def _load_recipient_list(
     db: AsyncSession,
     *,
     search: str = "",
-) -> tuple[list[RecipientTrackSnapshot], dict[str, TrackRealOpenSummary]]:
+    now: datetime,
+) -> list[dict]:
+    recipients: dict[str, dict] = {}
     track_query = select(TrackedEmail.id, TrackedEmail.recipient)
     if search:
         track_query = track_query.where(TrackedEmail.recipient.ilike(f"%{search}%"))
 
     track_result = await db.execute(track_query)
-    tracks = [
-        RecipientTrackSnapshot(id=track_id, recipient=recipient)
-        for track_id, recipient in track_result
-    ]
-    real_open_summaries = await load_real_open_summaries(db, track_ids=[track.id for track in tracks])
-    return tracks, real_open_summaries
+    track_batch: list[RecipientTrackSnapshot] = []
+    for track_id, recipient in track_result:
+        track_batch.append(RecipientTrackSnapshot(id=track_id, recipient=recipient))
+        if len(track_batch) >= RECIPIENT_SUMMARY_BATCH_SIZE:
+            await _accumulate_recipient_batch(db, track_batch, recipients)
+            track_batch = []
+
+    if track_batch:
+        await _accumulate_recipient_batch(db, track_batch, recipients)
+
+    return _finalize_recipient_list(recipients, now)
 
 
-def _build_recipient_list(
+async def _accumulate_recipient_batch(
+    db: AsyncSession,
     tracks: list[RecipientTrackSnapshot],
-    real_open_summaries: dict[str, TrackRealOpenSummary],
-    now: datetime,
-) -> list[dict]:
-    recipients: dict[str, dict] = {}
-
+    recipients: dict[str, dict],
+) -> None:
+    real_open_summaries = await load_real_open_summaries(db, track_ids=[track.id for track in tracks])
     for track in tracks:
+        real_open_summary = real_open_summaries.get(track.id)
         for display_email, email in _split_recipient_emails(track.recipient):
             if not email:
                 continue
@@ -207,7 +208,6 @@ def _build_recipient_list(
 
             recipient_data["sent"] += 1
 
-            real_open_summary = real_open_summaries.get(track.id)
             if real_open_summary is None or real_open_summary.count == 0:
                 continue
 
@@ -219,10 +219,19 @@ def _build_recipient_list(
             ):
                 recipient_data["last_open"] = last_open
 
+def _finalize_recipient_list(
+    recipients: dict[str, dict],
+    now: datetime,
+) -> list[dict]:
     recipient_list = []
     for email, data in recipients.items():
         open_rate = (data["opened"] / data["sent"] * 100) if data["sent"] > 0 else 0
-        score = _calculate_engagement_score(data["sent"], data["opened"], data["last_open"], now)
+        score = _calculate_engagement_score(
+            data["sent"],
+            data["opened"],
+            data["last_open"],
+            now,
+        )
         recipient_list.append({
             "email": data["display_email"],
             "email_lower": email,
@@ -249,6 +258,13 @@ def _split_recipient_emails(recipient: str | None) -> list[tuple[str, str]]:
             continue
         recipients.append((display_email, display_email.lower()))
     return recipients
+
+
+def _match_recipient_email(recipient: str | None, email_lower: str) -> str | None:
+    for display_email, candidate_lower in _split_recipient_emails(recipient):
+        if candidate_lower == email_lower:
+            return display_email
+    return None
 
 
 def _get_sort_key(sort: str):

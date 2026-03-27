@@ -1,6 +1,6 @@
 import logging
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text, select, text
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, String, Text, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy.sql import func
@@ -21,9 +21,29 @@ STARTUP_MIGRATIONS = {
     }
 }
 
+STARTUP_INDEX_MIGRATIONS = {
+    "tracked_emails": {
+        "ix_tracked_emails_created_at": (
+            "CREATE INDEX ix_tracked_emails_created_at ON tracked_emails (created_at)"
+        ),
+    },
+    "opens": {
+        "ix_opens_opened_at_id": (
+            "CREATE INDEX ix_opens_opened_at_id ON opens (opened_at, id)"
+        ),
+        "ix_opens_tracked_email_id_opened_at_id": (
+            "CREATE INDEX ix_opens_tracked_email_id_opened_at_id "
+            "ON opens (tracked_email_id, opened_at, id)"
+        ),
+    },
+}
+
 
 class TrackedEmail(Base):
     __tablename__ = "tracked_emails"
+    __table_args__ = (
+        Index("ix_tracked_emails_created_at", "created_at"),
+    )
 
     id = Column(String(36), primary_key=True)
     recipient = Column(String(255), nullable=True)
@@ -40,7 +60,11 @@ class TrackedEmail(Base):
 
 class Open(Base):
     __tablename__ = "opens"
-    
+    __table_args__ = (
+        Index("ix_opens_opened_at_id", "opened_at", "id"),
+        Index("ix_opens_tracked_email_id_opened_at_id", "tracked_email_id", "opened_at", "id"),
+    )
+
     id = Column(Integer, primary_key=True, autoincrement=True)
     tracked_email_id = Column(String(36), ForeignKey("tracked_emails.id", ondelete="CASCADE"), nullable=False)
     opened_at = Column(DateTime, server_default=func.now())
@@ -83,6 +107,31 @@ async def init_database():
                     "Applying startup migration for %s.%s",
                     table_name,
                     column_name,
+                )
+                await conn.execute(text(ddl))
+
+        for table_name, migrations in STARTUP_INDEX_MIGRATIONS.items():
+            result = await conn.execute(
+                text(
+                    """
+                    SELECT DISTINCT INDEX_NAME
+                    FROM INFORMATION_SCHEMA.STATISTICS
+                    WHERE TABLE_SCHEMA = DATABASE()
+                      AND TABLE_NAME = :table_name
+                    """
+                ),
+                {"table_name": table_name},
+            )
+            existing_indexes = {row[0] for row in result}
+
+            for index_name, ddl in migrations.items():
+                if index_name in existing_indexes:
+                    continue
+
+                logger.warning(
+                    "Applying startup index migration for %s.%s",
+                    table_name,
+                    index_name,
                 )
                 await conn.execute(text(ddl))
 

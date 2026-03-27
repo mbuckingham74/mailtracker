@@ -17,7 +17,7 @@ from ..notifications import (
 )
 from ..proxy_detection import detect_proxy_type
 from ..time_utils import ensure_utc
-from .open_activity import load_real_open_events, load_real_open_summaries
+from .open_activity import load_real_open_summaries
 
 logger = logging.getLogger(__name__)
 
@@ -168,13 +168,14 @@ async def _load_recent_real_open_count(
     now: datetime,
 ) -> int:
     twenty_four_hours_ago = now - timedelta(hours=24)
-    return len(
-        await load_real_open_events(
+    real_open_summary = (
+        await load_real_open_summaries(
             db,
             cutoff=twenty_four_hours_ago,
             track_ids=[tracking_id],
         )
-    )
+    ).get(tracking_id)
+    return real_open_summary.count if real_open_summary else 0
 
 
 async def _load_first_real_open_at(

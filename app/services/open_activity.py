@@ -34,22 +34,18 @@ async def load_real_open_events(
     if track_ids == []:
         return []
 
-    columns = [Open.tracked_email_id, Open.opened_at, Open.ip_address, Open.user_agent]
-    if include_location:
-        columns.extend([Open.country, Open.city])
-
-    query = select(*columns)
-    if cutoff is not None:
-        query = query.where(Open.opened_at >= cutoff)
-    if track_ids is not None:
-        query = query.where(Open.tracked_email_id.in_(track_ids))
-
-    result = await db.execute(query)
+    result = await db.execute(
+        _build_real_open_query(
+            cutoff=cutoff,
+            track_ids=track_ids,
+            include_location=include_location,
+        )
+    )
 
     real_opens: list[RealOpenEvent] = []
     for row in result:
         tracked_email_id, opened_at, ip_address, user_agent, *location = row
-        if detect_proxy_type(ip_address or "", user_agent or "") is not None:
+        if _is_proxy_open(ip_address, user_agent):
             continue
 
         country = location[0] if include_location else None
@@ -72,18 +68,51 @@ async def load_real_open_summaries(
     cutoff: datetime | None = None,
     track_ids: list[str] | None = None,
 ) -> dict[str, TrackRealOpenSummary]:
+    if track_ids == []:
+        return {}
+
     summaries: dict[str, TrackRealOpenSummary] = {}
 
-    for open_event in await load_real_open_events(db, cutoff=cutoff, track_ids=track_ids):
-        summary = summaries.setdefault(open_event.tracked_email_id, TrackRealOpenSummary())
-        summary.count += 1
+    result = await db.execute(
+        _build_real_open_query(cutoff=cutoff, track_ids=track_ids)
+    )
 
-        if open_event.opened_at is None:
+    for tracked_email_id, opened_at, ip_address, user_agent in result:
+        if _is_proxy_open(ip_address, user_agent):
             continue
 
-        if summary.first_open_at is None or open_event.opened_at < summary.first_open_at:
-            summary.first_open_at = open_event.opened_at
-        if summary.last_open_at is None or open_event.opened_at > summary.last_open_at:
-            summary.last_open_at = open_event.opened_at
+        summary = summaries.setdefault(tracked_email_id, TrackRealOpenSummary())
+        summary.count += 1
+
+        opened_at = ensure_utc(opened_at)
+        if opened_at is None:
+            continue
+
+        if summary.first_open_at is None or opened_at < summary.first_open_at:
+            summary.first_open_at = opened_at
+        if summary.last_open_at is None or opened_at > summary.last_open_at:
+            summary.last_open_at = opened_at
 
     return summaries
+
+
+def _build_real_open_query(
+    *,
+    cutoff: datetime | None = None,
+    track_ids: list[str] | None = None,
+    include_location: bool = False,
+):
+    columns = [Open.tracked_email_id, Open.opened_at, Open.ip_address, Open.user_agent]
+    if include_location:
+        columns.extend([Open.country, Open.city])
+
+    query = select(*columns)
+    if cutoff is not None:
+        query = query.where(Open.opened_at >= cutoff)
+    if track_ids is not None:
+        query = query.where(Open.tracked_email_id.in_(track_ids))
+    return query
+
+
+def _is_proxy_open(ip_address: str | None, user_agent: str | None) -> bool:
+    return detect_proxy_type(ip_address or "", user_agent or "") is not None
