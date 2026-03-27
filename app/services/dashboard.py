@@ -12,7 +12,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..database import Open, TrackedEmail
 from ..open_classification import (
     ResolvedOpenSnapshot,
-    resolve_open_classification,
     resolve_open_snapshot,
 )
 from ..time_utils import ensure_utc, to_local
@@ -374,30 +373,22 @@ async def _load_dashboard_open_summaries(
             Open.opened_at,
             Open.is_real_open,
             Open.proxy_type,
-            Open.ip_address,
-            Open.user_agent,
         )
         .where(Open.tracked_email_id.in_(track_ids))
         .order_by(Open.tracked_email_id.asc(), Open.opened_at.asc(), Open.id.asc())
     )
 
     summaries: dict[str, DashboardOpenSummary] = {}
-    for tracked_email_id, opened_at, is_real_open, proxy_type, ip_address, user_agent in result:
+    for tracked_email_id, opened_at, is_real_open, proxy_type in result:
         summary = summaries.setdefault(tracked_email_id, DashboardOpenSummary())
         summary.open_count += 1
         if summary.first_open is None:
             summary.first_open = opened_at
 
-        resolved_is_real_open, resolved_proxy_type = resolve_open_classification(
-            is_real_open=is_real_open,
-            proxy_type=proxy_type,
-            ip_address=ip_address,
-            user_agent=user_agent,
-        )
-        if not resolved_is_real_open:
-            if summary.first_proxy_open is None and resolved_proxy_type is not None:
+        if not is_real_open:
+            if summary.first_proxy_open is None and proxy_type is not None:
                 summary.first_proxy_open = opened_at
-                summary.first_proxy_type = resolved_proxy_type
+                summary.first_proxy_type = proxy_type
             continue
 
         summary.real_open_count += 1

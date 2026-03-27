@@ -9,7 +9,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..database import Open, TrackedEmail
 from ..open_classification import (
     ResolvedOpenSnapshot,
-    resolve_open_classification,
     resolve_open_snapshot,
 )
 
@@ -202,8 +201,6 @@ async def get_recent_real_opens(
                 Open.opened_at,
                 Open.country,
                 Open.city,
-                Open.is_real_open,
-                Open.proxy_type,
                 Open.ip_address,
                 Open.user_agent,
                 TrackedEmail.id,
@@ -211,6 +208,7 @@ async def get_recent_real_opens(
                 TrackedEmail.subject,
             )
             .join(TrackedEmail, Open.tracked_email_id == TrackedEmail.id)
+            .where(Open.is_real_open.is_(True))
             .order_by(Open.opened_at.desc(), Open.id.desc())
             .limit(RECENT_OPEN_BATCH_SIZE)
         )
@@ -237,8 +235,6 @@ async def get_recent_real_opens(
                 opened_at,
                 country,
                 city,
-                is_real_open,
-                proxy_type,
                 ip_address,
                 user_agent,
                 track_id,
@@ -247,14 +243,6 @@ async def get_recent_real_opens(
             ) = row
             last_open_id = open_id
             last_opened_at = opened_at
-            resolved_is_real_open, _ = resolve_open_classification(
-                is_real_open=is_real_open,
-                proxy_type=proxy_type,
-                ip_address=ip_address,
-                user_agent=user_agent,
-            )
-            if not resolved_is_real_open:
-                continue
 
             recent_opens.append((
                 RecentOpenSnapshot(

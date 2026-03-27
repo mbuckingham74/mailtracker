@@ -5,7 +5,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database import Open
-from ..open_classification import resolve_open_classification
 from ..time_utils import ensure_utc
 
 
@@ -44,10 +43,7 @@ async def load_real_open_events(
 
     real_opens: list[RealOpenEvent] = []
     for row in result:
-        tracked_email_id, opened_at, is_real_open, proxy_type, ip_address, user_agent, *location = row
-        if not _is_real_open(is_real_open, proxy_type, ip_address, user_agent):
-            continue
-
+        tracked_email_id, opened_at, *location = row
         country = location[0] if include_location else None
         city = location[1] if include_location else None
         real_opens.append(
@@ -77,10 +73,7 @@ async def load_real_open_summaries(
         _build_real_open_query(cutoff=cutoff, track_ids=track_ids)
     )
 
-    for tracked_email_id, opened_at, is_real_open, proxy_type, ip_address, user_agent in result:
-        if not _is_real_open(is_real_open, proxy_type, ip_address, user_agent):
-            continue
-
+    for tracked_email_id, opened_at in result:
         summary = summaries.setdefault(tracked_email_id, TrackRealOpenSummary())
         summary.count += 1
 
@@ -105,32 +98,13 @@ def _build_real_open_query(
     columns = [
         Open.tracked_email_id,
         Open.opened_at,
-        Open.is_real_open,
-        Open.proxy_type,
-        Open.ip_address,
-        Open.user_agent,
     ]
     if include_location:
         columns.extend([Open.country, Open.city])
 
-    query = select(*columns)
+    query = select(*columns).where(Open.is_real_open.is_(True))
     if cutoff is not None:
         query = query.where(Open.opened_at >= cutoff)
     if track_ids is not None:
         query = query.where(Open.tracked_email_id.in_(track_ids))
     return query
-
-
-def _is_real_open(
-    is_real_open: bool | None,
-    proxy_type: str | None,
-    ip_address: str | None,
-    user_agent: str | None,
-) -> bool:
-    resolved_is_real_open, _ = resolve_open_classification(
-        is_real_open=is_real_open,
-        proxy_type=proxy_type,
-        ip_address=ip_address,
-        user_agent=user_agent,
-    )
-    return resolved_is_real_open
