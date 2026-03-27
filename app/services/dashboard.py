@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
 
 from fastapi import HTTPException
-from sqlalchemy import delete, or_, select
+from sqlalchemy import delete, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database import Open, TrackedEmail
@@ -28,6 +28,15 @@ class DashboardTrackSnapshot:
     message_group_id: str | None
     created_at: datetime | None
     pinned: bool = False
+
+
+@dataclass(frozen=True)
+class DetailTrackSnapshot:
+    id: str
+    recipient: str | None
+    subject: str | None
+    notes: str | None
+    created_at: datetime | None
 
 
 async def build_dashboard_context(
@@ -99,11 +108,24 @@ async def build_dashboard_context(
 
 async def build_detail_context(db: AsyncSession, track_id: str) -> dict:
     result = await db.execute(
-        select(TrackedEmail).where(TrackedEmail.id == track_id)
+        select(
+            TrackedEmail.id,
+            TrackedEmail.recipient,
+            TrackedEmail.subject,
+            TrackedEmail.notes,
+            TrackedEmail.created_at,
+        ).where(TrackedEmail.id == track_id)
     )
-    track = result.scalar_one_or_none()
-    if not track:
+    row = result.one_or_none()
+    if row is None:
         raise HTTPException(status_code=404, detail="Track not found")
+    track = DetailTrackSnapshot(
+        id=row[0],
+        recipient=row[1],
+        subject=row[2],
+        notes=row[3],
+        created_at=row[4],
+    )
 
     opens_asc = await _load_track_opens_asc(db, track_id)
     proxy_opens, real_opens = _partition_proxy_opens(opens_asc)
@@ -142,25 +164,26 @@ async def delete_track(db: AsyncSession, track_id: str) -> None:
 
 async def toggle_track_pin(db: AsyncSession, track_id: str) -> None:
     result = await db.execute(
-        select(TrackedEmail).where(TrackedEmail.id == track_id)
+        select(TrackedEmail.pinned).where(TrackedEmail.id == track_id)
     )
-    track = result.scalar_one_or_none()
-    if track is None:
+    pinned = result.scalar_one_or_none()
+    if pinned is None:
         return
 
-    track.pinned = not track.pinned
+    await db.execute(
+        update(TrackedEmail)
+        .where(TrackedEmail.id == track_id)
+        .values(pinned=not bool(pinned))
+    )
     await db.commit()
 
 
 async def update_track_notes(db: AsyncSession, track_id: str, notes: str) -> None:
-    result = await db.execute(
-        select(TrackedEmail).where(TrackedEmail.id == track_id)
+    await db.execute(
+        update(TrackedEmail)
+        .where(TrackedEmail.id == track_id)
+        .values(notes=notes.strip() if notes else None)
     )
-    track = result.scalar_one_or_none()
-    if track is None:
-        return
-
-    track.notes = notes.strip() if notes else None
     await db.commit()
 
 

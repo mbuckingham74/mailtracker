@@ -21,6 +21,14 @@ class RecipientTrackSnapshot:
     recipient: str | None
 
 
+@dataclass(frozen=True)
+class RecipientDetailTrackSnapshot:
+    id: str
+    recipient: str | None
+    subject: str | None
+    created_at: datetime | None
+
+
 async def build_recipients_context(
     db: AsyncSession,
     *,
@@ -68,11 +76,24 @@ async def build_recipient_detail_context(db: AsyncSession, email: str) -> dict:
     search_pattern = f"%{email}%"
 
     result = await db.execute(
-        select(TrackedEmail)
+        select(
+            TrackedEmail.id,
+            TrackedEmail.recipient,
+            TrackedEmail.subject,
+            TrackedEmail.created_at,
+        )
         .where(TrackedEmail.recipient.ilike(search_pattern))
         .order_by(TrackedEmail.created_at.desc())
     )
-    candidate_tracks = result.scalars().all()
+    candidate_tracks = [
+        RecipientDetailTrackSnapshot(
+            id=track_id,
+            recipient=recipient,
+            subject=subject,
+            created_at=created_at,
+        )
+        for track_id, recipient, subject, created_at in result
+    ]
 
     tracks = []
     display_email = email
