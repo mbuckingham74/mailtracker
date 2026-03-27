@@ -42,6 +42,8 @@ class OpenResponse(BaseModel):
     referer: Optional[str]
     country: Optional[str]
     city: Optional[str]
+    proxy_type: Optional[str] = None
+    is_real_open: bool
 
     class Config:
         from_attributes = True
@@ -143,6 +145,8 @@ async def get_track(
                 referer=open_record.referer,
                 country=open_record.country,
                 city=open_record.city,
+                proxy_type=open_record.proxy_type,
+                is_real_open=open_record.is_real_open,
             )
             for open_record in opens
         ],
@@ -165,6 +169,8 @@ async def get_track_opens(
             referer=open_record.referer,
             country=open_record.country,
             city=open_record.city,
+            proxy_type=open_record.proxy_type,
+            is_real_open=open_record.is_real_open,
         )
         for open_record in opens
     ]

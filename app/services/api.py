@@ -49,6 +49,8 @@ class OpenSnapshot:
     referer: str | None
     country: str | None
     city: str | None
+    proxy_type: str | None
+    is_real_open: bool
 
 
 async def list_tracks(db: AsyncSession) -> list[tuple[TrackSnapshot, int]]:
@@ -126,6 +128,8 @@ async def list_track_opens(db: AsyncSession, track_id: str) -> list[OpenSnapshot
         select(
             Open.id,
             Open.opened_at,
+            Open.is_real_open,
+            Open.proxy_type,
             Open.ip_address,
             Open.user_agent,
             Open.referer,
@@ -135,18 +139,38 @@ async def list_track_opens(db: AsyncSession, track_id: str) -> list[OpenSnapshot
         .where(Open.tracked_email_id == track_id)
         .order_by(Open.opened_at.desc(), Open.id.desc())
     )
-    return [
-        OpenSnapshot(
-            id=open_id,
-            opened_at=opened_at,
+    opens: list[OpenSnapshot] = []
+    for (
+        open_id,
+        opened_at,
+        is_real_open,
+        proxy_type,
+        ip_address,
+        user_agent,
+        referer,
+        country,
+        city,
+    ) in result:
+        resolved_is_real_open, resolved_proxy_type = resolve_open_classification(
+            is_real_open=is_real_open,
+            proxy_type=proxy_type,
             ip_address=ip_address,
             user_agent=user_agent,
-            referer=referer,
-            country=country,
-            city=city,
         )
-        for open_id, opened_at, ip_address, user_agent, referer, country, city in result
-    ]
+        opens.append(
+            OpenSnapshot(
+                id=open_id,
+                opened_at=opened_at,
+                ip_address=ip_address,
+                user_agent=user_agent,
+                referer=referer,
+                country=country,
+                city=city,
+                proxy_type=resolved_proxy_type,
+                is_real_open=resolved_is_real_open,
+            )
+        )
+    return opens
 
 
 async def delete_track(db: AsyncSession, track_id: str) -> None:
