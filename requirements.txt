@@ -3,6 +3,7 @@ uvicorn[standard]
 sqlalchemy
 aiomysql
 pymysql
+aiosqlite
 python-dotenv
 jinja2
 python-multipart
