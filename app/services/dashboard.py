@@ -1,5 +1,6 @@
 import csv
 import io
+from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
 
@@ -48,12 +49,13 @@ async def build_dashboard_context(
 
     result = await db.execute(query)
     tracks = result.scalars().all()
+    opens_by_track_id = await _load_track_opens_map_asc(db, [track.id for track in tracks])
 
     groups: dict[str, list[dict]] = {}
     ungrouped: list[dict] = []
 
     for track in tracks:
-        opens = await _load_track_opens_asc(db, track.id)
+        opens = opens_by_track_id.get(track.id, [])
         track_data = _build_track_summary(track, opens)
 
         if filter_value == "opened" and track_data["real_open_count"] == 0:
@@ -168,6 +170,7 @@ async def export_tracks_csv(db: AsyncSession) -> tuple[str, str]:
         select(TrackedEmail).order_by(TrackedEmail.created_at.desc())
     )
     tracks = result.scalars().all()
+    opens_by_track_id = await _load_track_opens_map_asc(db, [track.id for track in tracks])
 
     output = io.StringIO()
     writer = csv.writer(output)
@@ -186,7 +189,7 @@ async def export_tracks_csv(db: AsyncSession) -> tuple[str, str]:
     ])
 
     for track in tracks:
-        opens = await _load_track_opens_asc(db, track.id)
+        opens = opens_by_track_id.get(track.id, [])
         email_created = to_local(track.created_at).strftime("%Y-%m-%d %H:%M:%S %Z") if track.created_at else ""
 
         for open_event in opens:
@@ -212,10 +215,27 @@ async def export_tracks_csv(db: AsyncSession) -> tuple[str, str]:
 
 
 async def _load_track_opens_asc(db: AsyncSession, track_id: str) -> list[Open]:
+    return (await _load_track_opens_map_asc(db, [track_id])).get(track_id, [])
+
+
+async def _load_track_opens_map_asc(
+    db: AsyncSession,
+    track_ids: list[str],
+) -> dict[str, list[Open]]:
+    if not track_ids:
+        return {}
+
     opens_result = await db.execute(
-        select(Open).where(Open.tracked_email_id == track_id).order_by(Open.opened_at.asc())
+        select(Open)
+        .where(Open.tracked_email_id.in_(track_ids))
+        .order_by(Open.tracked_email_id.asc(), Open.opened_at.asc(), Open.id.asc())
     )
-    return opens_result.scalars().all()
+
+    opens_by_track_id: dict[str, list[Open]] = defaultdict(list)
+    for open_event in opens_result.scalars().all():
+        opens_by_track_id[open_event.tracked_email_id].append(open_event)
+
+    return dict(opens_by_track_id)
 
 
 def _partition_proxy_opens(opens: list[Open]) -> tuple[list[tuple[Open, str]], list[Open]]:

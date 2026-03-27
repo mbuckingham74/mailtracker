@@ -1,5 +1,3 @@
-import os
-import gzip
 import tarfile
 import httpx
 from pathlib import Path
@@ -8,8 +6,9 @@ import geoip2.database
 import geoip2.errors
 
 from .config import settings
+from .paths import DATA_DIR
 
-GEOIP_DIR = Path("/app/data/geoip")
+GEOIP_DIR = DATA_DIR / "geoip"
 DB_PATH = GEOIP_DIR / "GeoLite2-City.mmdb"
 
 # Global reader instance
