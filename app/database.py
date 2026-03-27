@@ -19,7 +19,7 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy.sql import func
 
 from .config import settings
-from .open_classification import resolve_open_classification
+from .open_classification import resolve_missing_open_classification
 
 logger = logging.getLogger(__name__)
 
@@ -166,7 +166,6 @@ async def _backfill_missing_open_classification(conn: AsyncConnection) -> None:
         result = await conn.execute(
             select(
                 Open.id,
-                Open.is_real_open,
                 Open.proxy_type,
                 Open.ip_address,
                 Open.user_agent,
@@ -180,9 +179,8 @@ async def _backfill_missing_open_classification(conn: AsyncConnection) -> None:
             break
 
         updates = []
-        for open_id, is_real_open, proxy_type, ip_address, user_agent in rows:
-            resolved_is_real_open, resolved_proxy_type = resolve_open_classification(
-                is_real_open=is_real_open,
+        for open_id, proxy_type, ip_address, user_agent in rows:
+            resolved_is_real_open, resolved_proxy_type = resolve_missing_open_classification(
                 proxy_type=proxy_type,
                 ip_address=ip_address,
                 user_agent=user_agent,
