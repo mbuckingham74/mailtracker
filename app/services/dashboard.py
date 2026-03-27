@@ -10,7 +10,11 @@ from sqlalchemy import delete, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database import Open, TrackedEmail
-from ..open_classification import resolve_open_classification
+from ..open_classification import (
+    ResolvedOpenSnapshot,
+    resolve_open_classification,
+    resolve_open_snapshot,
+)
 from ..time_utils import ensure_utc, to_local
 from ..urls import get_pixel_url
 
@@ -40,15 +44,8 @@ class DetailTrackSnapshot:
 
 
 @dataclass(frozen=True)
-class OpenSnapshot:
+class OpenSnapshot(ResolvedOpenSnapshot):
     tracked_email_id: str
-    opened_at: datetime | None
-    ip_address: str | None
-    user_agent: str | None
-    country: str | None
-    city: str | None
-    proxy_type: str | None
-    is_real_open: bool
 
 
 @dataclass
@@ -345,22 +342,19 @@ async def _load_track_opens_map_asc(
         country,
         city,
     ) in opens_result:
-        resolved_is_real_open, resolved_proxy_type = resolve_open_classification(
+        resolved_open = resolve_open_snapshot(
+            opened_at=opened_at,
             is_real_open=is_real_open,
             proxy_type=proxy_type,
             ip_address=ip_address,
             user_agent=user_agent,
+            country=country,
+            city=city,
         )
         opens_by_track_id[tracked_email_id].append(
             OpenSnapshot(
                 tracked_email_id=tracked_email_id,
-                opened_at=opened_at,
-                ip_address=ip_address,
-                user_agent=user_agent,
-                country=country,
-                city=city,
-                proxy_type=resolved_proxy_type,
-                is_real_open=resolved_is_real_open,
+                **vars(resolved_open),
             )
         )
 
