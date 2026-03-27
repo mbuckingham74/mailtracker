@@ -88,6 +88,23 @@ def _build_open_response(open_record: TrackOpenRecord) -> OpenResponse:
     )
 
 
+def _build_track_response_fields(
+    track,
+    *,
+    open_count: int,
+) -> dict[str, object]:
+    return {
+        "id": track.id,
+        "recipient": track.recipient,
+        "subject": track.subject,
+        "notes": track.notes,
+        "message_group_id": track.message_group_id,
+        "created_at": track.created_at,
+        "open_count": open_count,
+        "pixel_url": get_pixel_url(track.id),
+    }
+
+
 @router.get("/tracks", response_model=List[TrackResponse])
 async def list_tracks(
     db: AsyncSession = Depends(get_db),
@@ -95,16 +112,7 @@ async def list_tracks(
 ):
     track_rows = await list_track_summaries(db)
     return [
-        TrackResponse(
-            id=track.id,
-            recipient=track.recipient,
-            subject=track.subject,
-            notes=track.notes,
-            message_group_id=track.message_group_id,
-            created_at=track.created_at,
-            open_count=open_count,
-            pixel_url=get_pixel_url(track.id)
-        )
+        TrackResponse(**_build_track_response_fields(track, open_count=open_count))
         for track, open_count in track_rows
     ]
 
@@ -123,16 +131,7 @@ async def create_track(
         message_group_id=track.message_group_id,
     )
 
-    return TrackResponse(
-        id=new_track.id,
-        recipient=new_track.recipient,
-        subject=new_track.subject,
-        notes=new_track.notes,
-        message_group_id=new_track.message_group_id,
-        created_at=new_track.created_at,
-        open_count=0,
-        pixel_url=get_pixel_url(new_track.id)
-    )
+    return TrackResponse(**_build_track_response_fields(new_track, open_count=0))
 
 
 @router.get("/tracks/{track_id}", response_model=TrackDetailResponse)
@@ -143,14 +142,7 @@ async def get_track(
 ):
     track, opens = await get_track_with_opens(db, track_id)
     return TrackDetailResponse(
-        id=track.id,
-        recipient=track.recipient,
-        subject=track.subject,
-        notes=track.notes,
-        message_group_id=track.message_group_id,
-        created_at=track.created_at,
-        open_count=len(opens),
-        pixel_url=get_pixel_url(track.id),
+        **_build_track_response_fields(track, open_count=len(opens)),
         opens=[_build_open_response(open_record) for open_record in opens],
     )
 

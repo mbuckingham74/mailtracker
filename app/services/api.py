@@ -40,6 +40,25 @@ class RecentOpenTrackSnapshot:
     subject: str | None
 
 
+def _build_track_snapshot(
+    *,
+    track_id: str,
+    recipient: str | None,
+    subject: str | None,
+    notes: str | None,
+    message_group_id: str | None,
+    created_at: datetime | None,
+) -> TrackSnapshot:
+    return TrackSnapshot(
+        id=track_id,
+        recipient=recipient,
+        subject=subject,
+        notes=notes,
+        message_group_id=message_group_id,
+        created_at=created_at,
+    )
+
+
 async def list_tracks(db: AsyncSession) -> list[tuple[TrackSnapshot, int]]:
     open_counts = (
         select(
@@ -65,8 +84,8 @@ async def list_tracks(db: AsyncSession) -> list[tuple[TrackSnapshot, int]]:
     )
     return [
         (
-            TrackSnapshot(
-                id=track_id,
+            _build_track_snapshot(
+                track_id=track_id,
                 recipient=recipient,
                 subject=subject,
                 notes=notes,
@@ -237,8 +256,8 @@ async def _get_track_or_404(db: AsyncSession, track_id: str) -> TrackSnapshot:
     row = result.one_or_none()
     if row is None:
         raise HTTPException(status_code=404, detail="Track not found")
-    return TrackSnapshot(
-        id=row[0],
+    return _build_track_snapshot(
+        track_id=row[0],
         recipient=row[1],
         subject=row[2],
         notes=row[3],

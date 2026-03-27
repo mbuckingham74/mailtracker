@@ -2,6 +2,8 @@ import unittest
 from datetime import datetime, timezone
 
 from app.services.open_activity import (
+    load_real_open_events,
+    load_real_open_summaries,
     load_track_open_records,
     load_track_open_records_map,
     load_track_open_summaries,
@@ -102,6 +104,41 @@ class OpenActivityTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(unknown_proxy_opened_at, summaries["track-2"].first_open)
         self.assertIsNone(summaries["track-2"].first_proxy_open)
         self.assertIsNone(summaries["track-2"].first_proxy_type)
+
+    async def test_load_real_open_events_normalizes_time_and_includes_location(self) -> None:
+        opened_at = datetime(2026, 3, 27, 15, 0)
+        db = FakeAsyncSession([
+            ("track-1", opened_at, "United States", "New York"),
+        ])
+
+        events = await load_real_open_events(
+            db,
+            include_location=True,
+        )
+
+        self.assertEqual(1, len(events))
+        self.assertEqual("track-1", events[0].tracked_email_id)
+        self.assertEqual(opened_at.replace(tzinfo=timezone.utc), events[0].opened_at)
+        self.assertEqual("United States", events[0].country)
+        self.assertEqual("New York", events[0].city)
+
+    async def test_load_real_open_summaries_ignores_missing_timestamps_for_bounds(self) -> None:
+        first_opened_at = datetime(2026, 3, 27, 11, 0, tzinfo=timezone.utc)
+        last_opened_at = datetime(2026, 3, 27, 16, 0, tzinfo=timezone.utc)
+        db = FakeAsyncSession([
+            ("track-1", None),
+            ("track-1", last_opened_at),
+            ("track-1", first_opened_at),
+        ])
+
+        summaries = await load_real_open_summaries(
+            db,
+            track_ids=["track-1"],
+        )
+
+        self.assertEqual(3, summaries["track-1"].count)
+        self.assertEqual(first_opened_at, summaries["track-1"].first_open_at)
+        self.assertEqual(last_opened_at, summaries["track-1"].last_open_at)
 
 
 if __name__ == "__main__":
