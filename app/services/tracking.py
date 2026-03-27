@@ -15,8 +15,8 @@ from ..notifications import (
     send_open_notification,
     send_revived_conversation_notification,
 )
-from ..proxy_detection import detect_proxy_type
 from ..time_utils import ensure_utc
+from ..open_classification import classify_open
 from .open_activity import load_real_open_summaries
 
 logger = logging.getLogger(__name__)
@@ -73,7 +73,7 @@ async def record_pixel_open(
     ip_address = get_client_ip(request) or (request.client.host if request.client else "")
     user_agent = request.headers.get("User-Agent", "")
     referer = request.headers.get("Referer", "")
-    proxy_type = detect_proxy_type(ip_address, user_agent)
+    is_real_open, proxy_type = classify_open(ip_address, user_agent)
     country, city = lookup_ip(ip_address)
 
     email_recipient = tracked_email.recipient or "Unknown"
@@ -82,7 +82,7 @@ async def record_pixel_open(
     should_notify = (
         tracked_email.notified_at is None
         and notifications_enabled
-        and proxy_type is None
+        and is_real_open
     )
 
     db.add(
@@ -93,6 +93,8 @@ async def record_pixel_open(
             referer=referer,
             country=country,
             city=city,
+            proxy_type=proxy_type,
+            is_real_open=is_real_open,
         )
     )
 
@@ -105,7 +107,7 @@ async def record_pixel_open(
     should_send_revived_conversation = False
     days_since_first_real_open = 0
 
-    if proxy_type is None and notifications_enabled:
+    if is_real_open and notifications_enabled:
         await db.flush()
 
         if tracked_email.hot_notified_at is None:

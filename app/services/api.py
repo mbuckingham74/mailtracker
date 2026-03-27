@@ -7,7 +7,7 @@ from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database import Open, TrackedEmail
-from ..proxy_detection import detect_proxy_type
+from ..open_classification import resolve_open_classification
 
 RECENT_REAL_OPENS_LIMIT = 50
 RECENT_OPEN_BATCH_SIZE = 200
@@ -184,6 +184,8 @@ async def get_recent_real_opens(
                 Open.opened_at,
                 Open.country,
                 Open.city,
+                Open.is_real_open,
+                Open.proxy_type,
                 Open.ip_address,
                 Open.user_agent,
                 TrackedEmail.id,
@@ -217,6 +219,8 @@ async def get_recent_real_opens(
                 opened_at,
                 country,
                 city,
+                is_real_open,
+                proxy_type,
                 ip_address,
                 user_agent,
                 track_id,
@@ -225,8 +229,13 @@ async def get_recent_real_opens(
             ) = row
             last_open_id = open_id
             last_opened_at = opened_at
-            proxy_type = detect_proxy_type(ip_address or "", user_agent or "")
-            if proxy_type is not None:
+            resolved_is_real_open, _ = resolve_open_classification(
+                is_real_open=is_real_open,
+                proxy_type=proxy_type,
+                ip_address=ip_address,
+                user_agent=user_agent,
+            )
+            if not resolved_is_real_open:
                 continue
 
             recent_opens.append((

@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database import Open
-from ..proxy_detection import detect_proxy_type
+from ..open_classification import resolve_open_classification
 from ..time_utils import ensure_utc
 
 
@@ -44,8 +44,8 @@ async def load_real_open_events(
 
     real_opens: list[RealOpenEvent] = []
     for row in result:
-        tracked_email_id, opened_at, ip_address, user_agent, *location = row
-        if _is_proxy_open(ip_address, user_agent):
+        tracked_email_id, opened_at, is_real_open, proxy_type, ip_address, user_agent, *location = row
+        if not _is_real_open(is_real_open, proxy_type, ip_address, user_agent):
             continue
 
         country = location[0] if include_location else None
@@ -77,8 +77,8 @@ async def load_real_open_summaries(
         _build_real_open_query(cutoff=cutoff, track_ids=track_ids)
     )
 
-    for tracked_email_id, opened_at, ip_address, user_agent in result:
-        if _is_proxy_open(ip_address, user_agent):
+    for tracked_email_id, opened_at, is_real_open, proxy_type, ip_address, user_agent in result:
+        if not _is_real_open(is_real_open, proxy_type, ip_address, user_agent):
             continue
 
         summary = summaries.setdefault(tracked_email_id, TrackRealOpenSummary())
@@ -102,7 +102,14 @@ def _build_real_open_query(
     track_ids: list[str] | None = None,
     include_location: bool = False,
 ):
-    columns = [Open.tracked_email_id, Open.opened_at, Open.ip_address, Open.user_agent]
+    columns = [
+        Open.tracked_email_id,
+        Open.opened_at,
+        Open.is_real_open,
+        Open.proxy_type,
+        Open.ip_address,
+        Open.user_agent,
+    ]
     if include_location:
         columns.extend([Open.country, Open.city])
 
@@ -114,5 +121,16 @@ def _build_real_open_query(
     return query
 
 
-def _is_proxy_open(ip_address: str | None, user_agent: str | None) -> bool:
-    return detect_proxy_type(ip_address or "", user_agent or "") is not None
+def _is_real_open(
+    is_real_open: bool | None,
+    proxy_type: str | None,
+    ip_address: str | None,
+    user_agent: str | None,
+) -> bool:
+    resolved_is_real_open, _ = resolve_open_classification(
+        is_real_open=is_real_open,
+        proxy_type=proxy_type,
+        ip_address=ip_address,
+        user_agent=user_agent,
+    )
+    return resolved_is_real_open

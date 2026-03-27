@@ -18,6 +18,10 @@ STARTUP_MIGRATIONS = {
     "tracked_emails": {
         "hot_notified_at": "ALTER TABLE tracked_emails ADD COLUMN hot_notified_at DATETIME NULL",
         "revived_notified_at": "ALTER TABLE tracked_emails ADD COLUMN revived_notified_at DATETIME NULL",
+    },
+    "opens": {
+        "proxy_type": "ALTER TABLE opens ADD COLUMN proxy_type VARCHAR(32) NULL",
+        "is_real_open": "ALTER TABLE opens ADD COLUMN is_real_open BOOLEAN NULL",
     }
 }
 
@@ -73,6 +77,8 @@ class Open(Base):
     referer = Column(Text, nullable=True)
     country = Column(String(100), nullable=True)
     city = Column(String(100), nullable=True)
+    proxy_type = Column(String(32), nullable=True)
+    is_real_open = Column(Boolean, nullable=True)
 
 
 async def get_db():

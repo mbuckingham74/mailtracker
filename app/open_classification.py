@@ -1,0 +1,32 @@
+from .proxy_detection import detect_proxy_type
+
+
+def classify_open(
+    ip_address: str | None,
+    user_agent: str | None = None,
+) -> tuple[bool, str | None]:
+    proxy_type = detect_proxy_type(ip_address or "", user_agent or "")
+    return proxy_type is None, proxy_type
+
+
+def resolve_open_classification(
+    *,
+    is_real_open: bool | None,
+    proxy_type: str | None,
+    ip_address: str | None,
+    user_agent: str | None,
+) -> tuple[bool, str | None]:
+    if is_real_open is not None:
+        if bool(is_real_open):
+            return True, None
+
+        if proxy_type is not None:
+            return False, proxy_type
+
+        _, resolved_proxy_type = classify_open(ip_address, user_agent)
+        return False, resolved_proxy_type
+
+    if proxy_type is not None:
+        return False, proxy_type
+
+    return classify_open(ip_address, user_agent)
