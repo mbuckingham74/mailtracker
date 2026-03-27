@@ -14,7 +14,7 @@ from ..services.dashboard import (
     update_track_notes,
 )
 from ..services.recipients import build_recipient_detail_context, build_recipients_context
-from ..web import templates
+from ..web import render_template
 
 router = APIRouter()
 
@@ -31,7 +31,7 @@ def redirect_to_login() -> RedirectResponse:
 async def login_page(request: Request):
     if is_authenticated(request):
         return RedirectResponse(url="/", status_code=303)
-    return templates.TemplateResponse("login.html", {"request": request, "error": None})
+    return render_template(request, "login.html", {"error": None})
 
 
 @router.post("/login")
@@ -39,7 +39,7 @@ async def login(request: Request, username: str = Form(...), password: str = For
     if username == settings.dashboard_username and password == settings.dashboard_password:
         request.session["authenticated"] = True
         return RedirectResponse(url="/", status_code=303)
-    return templates.TemplateResponse("login.html", {"request": request, "error": "Invalid credentials"})
+    return render_template(request, "login.html", {"error": "Invalid credentials"})
 
 
 @router.get("/logout")
@@ -67,7 +67,7 @@ async def dashboard(
         date_range=date_range,
         page=page,
     )
-    return templates.TemplateResponse("dashboard.html", {"request": request, **context})
+    return render_template(request, "dashboard.html", context)
 
 
 @router.get("/detail/{track_id}", response_class=HTMLResponse)
@@ -76,7 +76,7 @@ async def detail_page(request: Request, track_id: str, db: AsyncSession = Depend
         return redirect_to_login()
 
     context = await build_detail_context(db, track_id)
-    return templates.TemplateResponse("detail.html", {"request": request, **context})
+    return render_template(request, "detail.html", context)
 
 
 @router.post("/delete/{track_id}")
@@ -152,7 +152,7 @@ async def analytics(
         return redirect_to_login()
 
     context = await build_analytics_context(db, date_range)
-    return templates.TemplateResponse("analytics.html", {"request": request, **context})
+    return render_template(request, "analytics.html", context)
 
 
 @router.get("/recipients", response_class=HTMLResponse)
@@ -174,7 +174,7 @@ async def recipients_list(
         order=order,
         page=page,
     )
-    return templates.TemplateResponse("recipients.html", {"request": request, **context})
+    return render_template(request, "recipients.html", context)
 
 
 @router.get("/recipients/{email:path}", response_class=HTMLResponse)
@@ -187,4 +187,4 @@ async def recipient_detail(
         return redirect_to_login()
 
     context = await build_recipient_detail_context(db, email)
-    return templates.TemplateResponse("recipient_detail.html", {"request": request, **context})
+    return render_template(request, "recipient_detail.html", context)
