@@ -1,4 +1,3 @@
-from collections import defaultdict
 from datetime import datetime, timezone
 from statistics import median
 
@@ -6,9 +5,9 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..database import Open, TrackedEmail
-from ..proxy_detection import detect_proxy_type
+from ..database import TrackedEmail
 from ..time_utils import ensure_utc, format_duration_hours, format_time_ago
+from .open_activity import TrackRealOpenSummary, load_real_open_summaries
 
 ITEMS_PER_PAGE = 25
 VALID_SORTS = {"email", "sent", "opened", "rate", "last_open", "score"}
@@ -24,9 +23,9 @@ async def build_recipients_context(
     page: int,
 ) -> dict:
     now = datetime.now(timezone.utc)
-    tracks, real_open_map = await _load_tracks_and_real_open_map(db)
+    tracks, real_open_summaries = await _load_tracks_and_real_open_summaries(db)
 
-    recipient_list = _build_recipient_list(tracks, real_open_map, now)
+    recipient_list = _build_recipient_list(tracks, real_open_summaries, now)
     search = search.strip().lower()
     if search:
         recipient_list = [recipient for recipient in recipient_list if search in recipient["email_lower"]]
@@ -55,38 +54,34 @@ async def build_recipients_context(
 async def build_recipient_detail_context(db: AsyncSession, email: str) -> dict:
     now = datetime.now(timezone.utc)
     email_lower = email.lower()
+    search_pattern = f"%{email}%"
 
     result = await db.execute(
-        select(TrackedEmail).order_by(TrackedEmail.created_at.desc())
+        select(TrackedEmail)
+        .where(TrackedEmail.recipient.ilike(search_pattern))
+        .order_by(TrackedEmail.created_at.desc())
     )
-    all_tracks = result.scalars().all()
+    candidate_tracks = result.scalars().all()
 
     tracks = []
     display_email = email
-    for track in all_tracks:
-        if not track.recipient:
-            continue
-
-        recipient_emails = [candidate.strip().lower() for candidate in track.recipient.split(",")]
-        if email_lower not in recipient_emails:
+    for track in candidate_tracks:
+        recipient_candidates = _split_recipient_emails(track.recipient)
+        if email_lower not in {candidate_lower for _, candidate_lower in recipient_candidates}:
             continue
 
         tracks.append(track)
         if display_email == email:
-            for candidate in track.recipient.split(","):
-                if candidate.strip().lower() == email_lower:
-                    display_email = candidate.strip()
+            for candidate, candidate_lower in recipient_candidates:
+                if candidate_lower == email_lower:
+                    display_email = candidate
                     break
 
     if not tracks:
         raise HTTPException(status_code=404, detail="Recipient not found")
 
     track_ids = [track.id for track in tracks]
-    opens_result = await db.execute(
-        select(Open).where(Open.tracked_email_id.in_(track_ids))
-    )
-    all_opens = opens_result.scalars().all()
-    real_open_map = _build_real_open_map(all_opens)
+    real_open_summaries = await load_real_open_summaries(db, track_ids=track_ids)
 
     opened = 0
     last_open = None
@@ -94,18 +89,18 @@ async def build_recipient_detail_context(db: AsyncSession, email: str) -> dict:
     email_history = []
 
     for track in tracks:
-        real_opens = real_open_map.get(track.id, [])
-        was_opened = len(real_opens) > 0
-        first_open = min((open_event.opened_at for open_event in real_opens), default=None)
-        first_open = ensure_utc(first_open)
+        real_open_summary = real_open_summaries.get(track.id)
+        was_opened = real_open_summary is not None and real_open_summary.count > 0
+        first_open = real_open_summary.first_open_at if real_open_summary else None
+        latest_open = real_open_summary.last_open_at if real_open_summary else None
 
-        if was_opened and first_open is not None:
+        if was_opened:
             opened += 1
-            if last_open is None or first_open > last_open:
-                last_open = first_open
+            if latest_open is not None and (last_open is None or latest_open > last_open):
+                last_open = latest_open
 
             created_at = ensure_utc(track.created_at)
-            if created_at is not None:
+            if created_at is not None and first_open is not None:
                 delta_hours = (first_open - created_at).total_seconds() / 3600
                 if delta_hours > 0:
                     time_to_open_hours.append(delta_hours)
@@ -115,7 +110,7 @@ async def build_recipient_detail_context(db: AsyncSession, email: str) -> dict:
             "was_opened": was_opened,
             "first_open": first_open,
             "first_open_display": format_time_ago(first_open, now) if first_open else None,
-            "open_count": len(real_opens),
+            "open_count": real_open_summary.count if real_open_summary else 0,
         })
 
     sent = len(tracks)
@@ -137,39 +132,24 @@ async def build_recipient_detail_context(db: AsyncSession, email: str) -> dict:
     }
 
 
-async def _load_tracks_and_real_open_map(
+async def _load_tracks_and_real_open_summaries(
     db: AsyncSession,
-) -> tuple[list[TrackedEmail], dict[str, list[Open]]]:
+) -> tuple[list[TrackedEmail], dict[str, TrackRealOpenSummary]]:
     track_result = await db.execute(select(TrackedEmail))
     tracks = track_result.scalars().all()
-
-    opens_result = await db.execute(select(Open))
-    all_opens = opens_result.scalars().all()
-    return tracks, _build_real_open_map(all_opens)
-
-
-def _build_real_open_map(all_opens: list[Open]) -> dict[str, list[Open]]:
-    track_opens = defaultdict(list)
-    for open_event in all_opens:
-        proxy_type = detect_proxy_type(open_event.ip_address, open_event.user_agent or "")
-        if proxy_type is None:
-            track_opens[open_event.tracked_email_id].append(open_event)
-    return track_opens
+    real_open_summaries = await load_real_open_summaries(db, track_ids=[track.id for track in tracks])
+    return tracks, real_open_summaries
 
 
 def _build_recipient_list(
     tracks: list[TrackedEmail],
-    real_open_map: dict[str, list[Open]],
+    real_open_summaries: dict[str, TrackRealOpenSummary],
     now: datetime,
 ) -> list[dict]:
     recipients: dict[str, dict] = {}
 
     for track in tracks:
-        if not track.recipient:
-            continue
-
-        recipient_emails = [candidate.strip().lower() for candidate in track.recipient.split(",")]
-        for email in recipient_emails:
+        for display_email, email in _split_recipient_emails(track.recipient):
             if not email:
                 continue
 
@@ -177,32 +157,26 @@ def _build_recipient_list(
                 email,
                 {
                     "email": email,
-                    "display_email": email,
+                    "display_email": display_email,
                     "sent": 0,
                     "opened": 0,
                     "last_open": None,
                 },
             )
 
-            if recipient_data["sent"] == 0:
-                for candidate in track.recipient.split(","):
-                    if candidate.strip().lower() == email:
-                        recipient_data["display_email"] = candidate.strip()
-                        break
-
             recipient_data["sent"] += 1
 
-            real_opens = real_open_map.get(track.id, [])
-            if not real_opens:
+            real_open_summary = real_open_summaries.get(track.id)
+            if real_open_summary is None or real_open_summary.count == 0:
                 continue
 
             recipient_data["opened"] += 1
-            first_open = ensure_utc(min(open_event.opened_at for open_event in real_opens))
-            if first_open and (
+            last_open = real_open_summary.last_open_at
+            if last_open and (
                 recipient_data["last_open"] is None
-                or first_open > recipient_data["last_open"]
+                or last_open > recipient_data["last_open"]
             ):
-                recipient_data["last_open"] = first_open
+                recipient_data["last_open"] = last_open
 
     recipient_list = []
     for email, data in recipients.items():
@@ -221,6 +195,19 @@ def _build_recipient_list(
         })
 
     return recipient_list
+
+
+def _split_recipient_emails(recipient: str | None) -> list[tuple[str, str]]:
+    if not recipient:
+        return []
+
+    recipients: list[tuple[str, str]] = []
+    for candidate in recipient.split(","):
+        display_email = candidate.strip()
+        if not display_email:
+            continue
+        recipients.append((display_email, display_email.lower()))
+    return recipients
 
 
 def _get_sort_key(sort: str):

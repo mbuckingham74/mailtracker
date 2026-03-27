@@ -2,18 +2,25 @@ import csv
 import io
 import json
 from collections import defaultdict
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from statistics import median
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..database import Open, TrackedEmail
-from ..proxy_detection import detect_proxy_type
+from ..database import TrackedEmail
 from ..time_utils import ensure_utc, format_duration_hours, to_local
+from .open_activity import RealOpenEvent, load_real_open_events
 
 VALID_DATE_RANGES = {"7", "30", "90", "all"}
 DOW_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+
+@dataclass(frozen=True)
+class TrackSnapshot:
+    id: str
+    created_at: datetime | None
 
 
 async def build_analytics_context(db: AsyncSession, date_range: str) -> dict:
@@ -24,8 +31,7 @@ async def build_analytics_context(db: AsyncSession, date_range: str) -> dict:
 
     total_emails = len(tracks)
     total_real_opens = len(real_opens)
-    emails_with_opens = {open_event.tracked_email_id for open_event in real_opens}
-    open_rate = (len(emails_with_opens) / total_emails * 100) if total_emails > 0 else 0
+    open_rate = _calculate_open_rate(tracks, real_opens)
 
     time_to_open_hours = _collect_time_to_open_hours(tracks, real_opens)
     avg_time_to_open = median(time_to_open_hours) if time_to_open_hours else None
@@ -80,8 +86,7 @@ async def export_analytics_csv(db: AsyncSession, date_range: str) -> tuple[str, 
     writer.writerow(["Total Emails Tracked", len(tracks)])
     writer.writerow(["Total Real Opens", len(real_opens)])
 
-    emails_with_opens = {open_event.tracked_email_id for open_event in real_opens}
-    open_rate = (len(emails_with_opens) / len(tracks) * 100) if tracks else 0
+    open_rate = _calculate_open_rate(tracks, real_opens)
     writer.writerow(["Open Rate", f"{open_rate:.1f}%"])
     writer.writerow([])
 
@@ -129,32 +134,42 @@ def _get_cutoff(now: datetime, date_range: str) -> datetime | None:
 async def _load_tracks_and_real_opens(
     db: AsyncSession,
     cutoff: datetime | None,
-) -> tuple[list[TrackedEmail], list[Open]]:
-    track_query = select(TrackedEmail)
+) -> tuple[list[TrackSnapshot], list[RealOpenEvent]]:
+    track_query = select(TrackedEmail.id, TrackedEmail.created_at)
     if cutoff is not None:
         track_query = track_query.where(TrackedEmail.created_at >= cutoff)
     track_result = await db.execute(track_query)
-    tracks = track_result.scalars().all()
+    tracks = [
+        TrackSnapshot(id=track_id, created_at=created_at)
+        for track_id, created_at in track_result.all()
+    ]
 
-    opens_query = select(Open)
-    if cutoff is not None:
-        opens_query = opens_query.where(Open.opened_at >= cutoff)
-    opens_result = await db.execute(opens_query)
-    all_opens = opens_result.scalars().all()
-
-    real_opens = []
-    for open_event in all_opens:
-        proxy_type = detect_proxy_type(open_event.ip_address, open_event.user_agent or "")
-        if proxy_type is None:
-            real_opens.append(open_event)
-
+    real_opens = await load_real_open_events(db, cutoff=cutoff, include_location=True)
     return tracks, real_opens
 
 
-def _collect_time_to_open_hours(tracks: list[TrackedEmail], real_opens: list[Open]) -> list[float]:
+def _calculate_open_rate(tracks: list[TrackSnapshot], real_opens: list[RealOpenEvent]) -> float:
+    if not tracks:
+        return 0
+
+    track_ids = {track.id for track in tracks}
+    emails_with_opens = {
+        open_event.tracked_email_id
+        for open_event in real_opens
+        if open_event.tracked_email_id in track_ids
+    }
+    return len(emails_with_opens) / len(tracks) * 100
+
+
+def _collect_time_to_open_hours(
+    tracks: list[TrackSnapshot],
+    real_opens: list[RealOpenEvent],
+) -> list[float]:
     first_real_open_times: dict[str, datetime] = {}
     for open_event in real_opens:
         current_first = first_real_open_times.get(open_event.tracked_email_id)
+        if open_event.opened_at is None:
+            continue
         if current_first is None or open_event.opened_at < current_first:
             first_real_open_times[open_event.tracked_email_id] = open_event.opened_at
 
@@ -183,8 +198,8 @@ def _get_granularity(date_range: str) -> str:
 
 
 def _build_time_series(
-    tracks: list[TrackedEmail],
-    real_opens: list[Open],
+    tracks: list[TrackSnapshot],
+    real_opens: list[RealOpenEvent],
     start: datetime,
     end: datetime,
     granularity: str,
@@ -250,7 +265,9 @@ def _generate_date_keys(start: datetime, end: datetime, granularity: str) -> lis
     return keys
 
 
-def _build_geography(real_opens: list[Open]) -> tuple[list[tuple[str, int]], list[tuple[str, int]]]:
+def _build_geography(
+    real_opens: list[RealOpenEvent],
+) -> tuple[list[tuple[str, int]], list[tuple[str, int]]]:
     opens_by_country = defaultdict(int)
     opens_by_city = defaultdict(int)
 
@@ -265,7 +282,7 @@ def _build_geography(real_opens: list[Open]) -> tuple[list[tuple[str, int]], lis
     return sorted_countries, sorted_cities
 
 
-def _build_hour_distribution(real_opens: list[Open]) -> tuple[list[str], list[int]]:
+def _build_hour_distribution(real_opens: list[RealOpenEvent]) -> tuple[list[str], list[int]]:
     opens_by_hour = defaultdict(int)
     for open_event in real_opens:
         local_time = to_local(open_event.opened_at)
@@ -277,7 +294,7 @@ def _build_hour_distribution(real_opens: list[Open]) -> tuple[list[str], list[in
     return hour_labels, hour_data
 
 
-def _build_day_of_week_distribution(real_opens: list[Open]) -> list[int]:
+def _build_day_of_week_distribution(real_opens: list[RealOpenEvent]) -> list[int]:
     opens_by_dow = defaultdict(int)
     for open_event in real_opens:
         local_time = to_local(open_event.opened_at)

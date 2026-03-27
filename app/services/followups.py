@@ -5,10 +5,10 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 
 from ..config import settings
-from ..database import Open, TrackedEmail, async_session
+from ..database import TrackedEmail, async_session
 from ..notifications import is_email_notifications_enabled, send_followup_reminder
-from ..proxy_detection import detect_proxy_type
 from ..time_utils import ensure_utc
+from .open_activity import load_real_open_summaries
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +32,9 @@ async def check_followup_reminders() -> None:
         if not tracks:
             return
 
-        real_open_track_ids = await _load_real_open_track_ids(db, [track.id for track in tracks])
+        real_open_track_ids = set(
+            await load_real_open_summaries(db, track_ids=[track.id for track in tracks])
+        )
 
         for track in tracks:
             if track.id in real_open_track_ids:
@@ -57,20 +59,3 @@ async def check_followup_reminders() -> None:
                 track.followup_notified_at = now
                 await db.commit()
                 logger.info("Follow-up reminder sent for track %s", track.id)
-
-
-async def _load_real_open_track_ids(db, track_ids: list[str]) -> set[str]:
-    if not track_ids:
-        return set()
-
-    result = await db.execute(
-        select(Open).where(Open.tracked_email_id.in_(track_ids))
-    )
-
-    real_open_track_ids: set[str] = set()
-    for open_event in result.scalars().all():
-        proxy_type = detect_proxy_type(open_event.ip_address or "", open_event.user_agent or "")
-        if proxy_type is None:
-            real_open_track_ids.add(open_event.tracked_email_id)
-
-    return real_open_track_ids
