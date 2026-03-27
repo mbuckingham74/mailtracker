@@ -22,8 +22,8 @@ async def followup_reminder_task():
     while True:
         try:
             await check_followup_reminders()
-        except Exception as e:
-            logger.error(f"Error in follow-up reminder task: {e}")
+        except Exception:
+            logger.exception("Error in follow-up reminder task")
         # Check every hour
         await asyncio.sleep(3600)
 

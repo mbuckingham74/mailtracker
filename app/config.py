@@ -21,6 +21,26 @@ def _get_bool(name: str, default: bool) -> bool:
     return raw_value.lower() == "true"
 
 
+def _get_int(name: str, default: int, *, minimum: int | None = None) -> int:
+    raw_value = os.getenv(name)
+    if raw_value is None:
+        value = default
+    else:
+        try:
+            value = int(raw_value)
+        except ValueError as exc:
+            raise RuntimeError(
+                f"Invalid {name} '{raw_value}'. Expected an integer value."
+            ) from exc
+
+    if minimum is not None and value < minimum:
+        raise RuntimeError(
+            f"Invalid {name} '{value}'. Expected a value >= {minimum}."
+        )
+
+    return value
+
+
 def _get_timezone(name: str) -> ZoneInfo:
     try:
         return ZoneInfo(name)
@@ -61,13 +81,13 @@ def load_settings() -> Settings:
         dashboard_password=_require_env("DASHBOARD_PASSWORD"),
         display_timezone=_get_timezone(os.getenv("DISPLAY_TIMEZONE", "America/New_York")),
         cookie_secure=_get_bool("COOKIE_SECURE", True),
-        followup_days=int(os.getenv("FOLLOWUP_DAYS", "3")),
+        followup_days=_get_int("FOLLOWUP_DAYS", 3, minimum=0),
         trusted_proxy_cidrs=os.getenv(
             "TRUSTED_PROXY_CIDRS",
             "127.0.0.1/32,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7",
         ),
         smtp_server=os.getenv("SMTP_SERVER", "smtp.gmail.com"),
-        smtp_port=int(os.getenv("SMTP_PORT", "587")),
+        smtp_port=_get_int("SMTP_PORT", 587, minimum=1),
         smtp_username=os.getenv("SMTP_USERNAME", ""),
         smtp_password=os.getenv("SMTP_PASSWORD", ""),
         notification_email=os.getenv("NOTIFICATION_EMAIL", ""),

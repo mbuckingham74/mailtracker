@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Header, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional, List
 from datetime import datetime, timezone
 
@@ -39,6 +39,8 @@ class TrackCreate(BaseModel):
 
 
 class OpenResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     opened_at: datetime
     ip_address: Optional[str]
@@ -49,11 +51,10 @@ class OpenResponse(BaseModel):
     proxy_type: Optional[str] = None
     is_real_open: bool
 
-    class Config:
-        from_attributes = True
-
 
 class TrackResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     recipient: Optional[str]
     subject: Optional[str]
@@ -63,9 +64,6 @@ class TrackResponse(BaseModel):
     open_count: int = 0
     pixel_url: str = ""
 
-    class Config:
-        from_attributes = True
-
 
 class TrackDetailResponse(TrackResponse):
     opens: List[OpenResponse] = Field(default_factory=list)
@@ -73,6 +71,8 @@ class TrackDetailResponse(TrackResponse):
 
 class RecentOpenResponse(BaseModel):
     """Response for recent opens endpoint - includes track details for notifications."""
+    model_config = ConfigDict(from_attributes=True)
+
     open_id: int
     opened_at: datetime
     recipient: Optional[str]
@@ -81,11 +81,10 @@ class RecentOpenResponse(BaseModel):
     city: Optional[str]
     track_id: str
 
-    class Config:
-        from_attributes = True
-
 
 class LatestRealOpenResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     open_id: int
     opened_at: datetime
     recipient: Optional[str]
@@ -93,15 +92,22 @@ class LatestRealOpenResponse(BaseModel):
     country: Optional[str]
     city: Optional[str]
 
-    class Config:
-        from_attributes = True
-
 
 class StatsResponse(BaseModel):
     total_tracks: int
     total_opens: int
     tracks_with_opens: int
     latest_real_open: Optional[LatestRealOpenResponse] = None
+
+
+def _parse_since_timestamp(since: float | None) -> datetime | None:
+    if since is None:
+        return None
+
+    try:
+        return datetime.fromtimestamp(since, tz=timezone.utc)
+    except (OverflowError, OSError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail="Invalid 'since' timestamp") from exc
 
 
 def _build_open_response(open_record: TrackOpenRecord) -> OpenResponse:
@@ -227,6 +233,6 @@ async def get_recent_opens(
     Get recent real opens (excluding proxy opens) since a given timestamp.
     Used by Chrome extension for browser notifications.
     """
-    since_dt = datetime.fromtimestamp(since, tz=timezone.utc) if since is not None else None
+    since_dt = _parse_since_timestamp(since)
     recent_opens = await load_recent_real_open_records(db, cutoff=since_dt)
     return [_build_recent_open_response(open_record) for open_record in recent_opens]

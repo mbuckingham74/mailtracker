@@ -12,7 +12,13 @@ def _parse_networks(raw_cidrs: str) -> list:
         cidr = cidr.strip()
         if not cidr:
             continue
-        networks.append(ipaddress.ip_network(cidr, strict=False))
+        try:
+            networks.append(ipaddress.ip_network(cidr, strict=False))
+        except ValueError as exc:
+            raise RuntimeError(
+                f"Invalid TRUSTED_PROXY_CIDRS entry '{cidr}'. "
+                "Use CIDR notation like '10.0.0.0/8'."
+            ) from exc
     return networks
 
 
