@@ -71,10 +71,37 @@ class TrackDetailResponse(TrackResponse):
     opens: List[OpenResponse] = Field(default_factory=list)
 
 
+class RecentOpenResponse(BaseModel):
+    """Response for recent opens endpoint - includes track details for notifications."""
+    open_id: int
+    opened_at: datetime
+    recipient: Optional[str]
+    subject: Optional[str]
+    country: Optional[str]
+    city: Optional[str]
+    track_id: str
+
+    class Config:
+        from_attributes = True
+
+
+class LatestRealOpenResponse(BaseModel):
+    open_id: int
+    opened_at: datetime
+    recipient: Optional[str]
+    subject: Optional[str]
+    country: Optional[str]
+    city: Optional[str]
+
+    class Config:
+        from_attributes = True
+
+
 class StatsResponse(BaseModel):
     total_tracks: int
     total_opens: int
     tracks_with_opens: int
+    latest_real_open: Optional[LatestRealOpenResponse] = None
 
 
 def _build_open_response(open_record: TrackOpenRecord) -> OpenResponse:
@@ -188,20 +215,6 @@ async def get_stats(
     _auth: bool = Depends(verify_api_key)
 ):
     return StatsResponse(**await get_api_stats(db))
-
-
-class RecentOpenResponse(BaseModel):
-    """Response for recent opens endpoint - includes track details for notifications."""
-    open_id: int
-    opened_at: datetime
-    recipient: Optional[str]
-    subject: Optional[str]
-    country: Optional[str]
-    city: Optional[str]
-    track_id: str
-
-    class Config:
-        from_attributes = True
 
 
 @router.get("/opens/recent", response_model=List[RecentOpenResponse])

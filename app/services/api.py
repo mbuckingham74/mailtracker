@@ -7,7 +7,12 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database import Open, TrackedEmail
-from .open_activity import TrackOpenRecord, load_track_open_records
+from .open_activity import (
+    RecentRealOpenRecord,
+    TrackOpenRecord,
+    load_latest_real_open_record,
+    load_track_open_records,
+)
 
 
 @dataclass(frozen=True)
@@ -119,17 +124,35 @@ async def delete_track(db: AsyncSession, track_id: str) -> None:
     await db.commit()
 
 
-async def get_stats(db: AsyncSession) -> dict[str, int]:
+def _build_latest_real_open_payload(
+    open_record: RecentRealOpenRecord | None,
+) -> dict[str, object] | None:
+    if open_record is None:
+        return None
+
+    return {
+        "open_id": open_record.id,
+        "opened_at": open_record.opened_at,
+        "recipient": open_record.recipient,
+        "subject": open_record.subject,
+        "country": open_record.country,
+        "city": open_record.city,
+    }
+
+
+async def get_stats(db: AsyncSession) -> dict[str, object]:
     tracks_result = await db.execute(select(func.count(TrackedEmail.id)))
     opens_result = await db.execute(select(func.count(Open.id)))
     with_opens_result = await db.execute(
         select(func.count(func.distinct(Open.tracked_email_id)))
     )
+    latest_real_open = await load_latest_real_open_record(db)
 
     return {
         "total_tracks": tracks_result.scalar() or 0,
         "total_opens": opens_result.scalar() or 0,
         "tracks_with_opens": with_opens_result.scalar() or 0,
+        "latest_real_open": _build_latest_real_open_payload(latest_real_open),
     }
 
 

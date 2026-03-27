@@ -280,6 +280,19 @@ async def load_recent_real_open_records(
     return recent_opens
 
 
+async def load_latest_real_open_record(
+    db: AsyncSession,
+) -> RecentRealOpenRecord | None:
+    recent_opens = await load_recent_real_open_records(
+        db,
+        limit=1,
+        batch_size=1,
+    )
+    if not recent_opens:
+        return None
+    return recent_opens[0]
+
+
 def _build_track_open_records_query(
     *,
     track_ids: list[str],
