@@ -2,7 +2,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 
 from fastapi import BackgroundTasks, Request
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..client_ip import get_client_ip
@@ -16,6 +16,7 @@ from ..notifications import (
 )
 from ..proxy_detection import detect_proxy_type
 from ..time_utils import ensure_utc
+from .open_activity import load_real_open_events, load_real_open_summaries
 
 logger = logging.getLogger(__name__)
 
@@ -51,9 +52,10 @@ async def record_pixel_open(
 
     email_recipient = tracked_email.recipient or "Unknown"
     email_subject = tracked_email.subject or "(no subject)"
+    notifications_enabled = is_email_notifications_enabled()
     should_notify = (
         tracked_email.notified_at is None
-        and is_email_notifications_enabled()
+        and notifications_enabled
         and proxy_type is None
     )
 
@@ -71,6 +73,28 @@ async def record_pixel_open(
     if should_notify:
         tracked_email.notified_at = now
 
+    should_send_hot_conversation = False
+    hot_open_count = 0
+    should_send_revived_conversation = False
+    days_since_first_real_open = 0
+
+    if proxy_type is None and notifications_enabled:
+        await db.flush()
+
+        if tracked_email.hot_notified_at is None:
+            hot_open_count = await _load_recent_real_open_count(db, tracking_id, now)
+            if hot_open_count >= 3:
+                tracked_email.hot_notified_at = now
+                should_send_hot_conversation = True
+
+        if tracked_email.revived_notified_at is None:
+            first_real_open_at = await _load_first_real_open_at(db, tracking_id)
+            if first_real_open_at is not None:
+                days_since_first_real_open = (now - first_real_open_at).days
+                if days_since_first_real_open >= 14:
+                    tracked_email.revived_notified_at = now
+                    should_send_revived_conversation = True
+
     await db.commit()
 
     if should_notify:
@@ -85,97 +109,45 @@ async def record_pixel_open(
             sent_at=created_at,
         )
 
-    if proxy_type is not None or not is_email_notifications_enabled():
-        return
+    if should_send_hot_conversation:
+        background_tasks.add_task(
+            send_hot_conversation_notification,
+            recipient=email_recipient,
+            subject=email_subject,
+            open_count=hot_open_count,
+            track_id=tracking_id,
+        )
 
-    await _maybe_queue_hot_conversation_notification(
-        db,
-        tracking_id,
-        now,
-        background_tasks,
-        email_recipient,
-        email_subject,
-    )
-    await _maybe_queue_revived_conversation_notification(
-        db,
-        tracking_id,
-        now,
-        background_tasks,
-        email_recipient,
-        email_subject,
-    )
+    if should_send_revived_conversation:
+        background_tasks.add_task(
+            send_revived_conversation_notification,
+            recipient=email_recipient,
+            subject=email_subject,
+            days_since_first_open=days_since_first_real_open,
+            track_id=tracking_id,
+        )
 
 
-async def _maybe_queue_hot_conversation_notification(
+async def _load_recent_real_open_count(
     db: AsyncSession,
     tracking_id: str,
     now: datetime,
-    background_tasks: BackgroundTasks,
-    recipient: str,
-    subject: str,
-) -> None:
-    result = await db.execute(
-        select(TrackedEmail).where(TrackedEmail.id == tracking_id)
-    )
-    tracked_email = result.scalar_one_or_none()
-    if tracked_email is None or tracked_email.hot_notified_at is not None:
-        return
-
+) -> int:
     twenty_four_hours_ago = now - timedelta(hours=24)
-    count_result = await db.execute(
-        select(func.count(Open.id))
-        .where(Open.tracked_email_id == tracking_id)
-        .where(Open.opened_at >= twenty_four_hours_ago)
-    )
-    open_count = count_result.scalar() or 0
-    if open_count < 3:
-        return
-
-    tracked_email.hot_notified_at = now
-    await db.commit()
-
-    background_tasks.add_task(
-        send_hot_conversation_notification,
-        recipient=recipient,
-        subject=subject,
-        open_count=open_count,
-        track_id=tracking_id,
+    return len(
+        await load_real_open_events(
+            db,
+            cutoff=twenty_four_hours_ago,
+            track_ids=[tracking_id],
+        )
     )
 
 
-async def _maybe_queue_revived_conversation_notification(
+async def _load_first_real_open_at(
     db: AsyncSession,
     tracking_id: str,
-    now: datetime,
-    background_tasks: BackgroundTasks,
-    recipient: str,
-    subject: str,
-) -> None:
-    result = await db.execute(
-        select(TrackedEmail).where(TrackedEmail.id == tracking_id)
-    )
-    tracked_email = result.scalar_one_or_none()
-    if tracked_email is None or tracked_email.revived_notified_at is not None:
-        return
-
-    first_open_result = await db.execute(
-        select(func.min(Open.opened_at)).where(Open.tracked_email_id == tracking_id)
-    )
-    first_open_at = ensure_utc(first_open_result.scalar())
-    if first_open_at is None:
-        return
-
-    days_since_first_open = (now - first_open_at).days
-    if days_since_first_open < 14:
-        return
-
-    tracked_email.revived_notified_at = now
-    await db.commit()
-
-    background_tasks.add_task(
-        send_revived_conversation_notification,
-        recipient=recipient,
-        subject=subject,
-        days_since_first_open=days_since_first_open,
-        track_id=tracking_id,
-    )
+) -> datetime | None:
+    real_open_summary = (
+        await load_real_open_summaries(db, track_ids=[tracking_id])
+    ).get(tracking_id)
+    return real_open_summary.first_open_at if real_open_summary else None

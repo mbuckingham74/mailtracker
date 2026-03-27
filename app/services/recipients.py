@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from statistics import median
 
@@ -14,6 +15,12 @@ VALID_SORTS = {"email", "sent", "opened", "rate", "last_open", "score"}
 VALID_ORDERS = {"asc", "desc"}
 
 
+@dataclass(frozen=True)
+class RecipientTrackSnapshot:
+    id: str
+    recipient: str | None
+
+
 async def build_recipients_context(
     db: AsyncSession,
     *,
@@ -23,10 +30,14 @@ async def build_recipients_context(
     page: int,
 ) -> dict:
     now = datetime.now(timezone.utc)
-    tracks, real_open_summaries = await _load_tracks_and_real_open_summaries(db)
+    raw_search = search.strip()
+    tracks, real_open_summaries = await _load_recipient_tracks_and_real_open_summaries(
+        db,
+        search=raw_search,
+    )
 
     recipient_list = _build_recipient_list(tracks, real_open_summaries, now)
-    search = search.strip().lower()
+    search = raw_search.lower()
     if search:
         recipient_list = [recipient for recipient in recipient_list if search in recipient["email_lower"]]
 
@@ -132,17 +143,26 @@ async def build_recipient_detail_context(db: AsyncSession, email: str) -> dict:
     }
 
 
-async def _load_tracks_and_real_open_summaries(
+async def _load_recipient_tracks_and_real_open_summaries(
     db: AsyncSession,
-) -> tuple[list[TrackedEmail], dict[str, TrackRealOpenSummary]]:
-    track_result = await db.execute(select(TrackedEmail))
-    tracks = track_result.scalars().all()
+    *,
+    search: str = "",
+) -> tuple[list[RecipientTrackSnapshot], dict[str, TrackRealOpenSummary]]:
+    track_query = select(TrackedEmail.id, TrackedEmail.recipient)
+    if search:
+        track_query = track_query.where(TrackedEmail.recipient.ilike(f"%{search}%"))
+
+    track_result = await db.execute(track_query)
+    tracks = [
+        RecipientTrackSnapshot(id=track_id, recipient=recipient)
+        for track_id, recipient in track_result
+    ]
     real_open_summaries = await load_real_open_summaries(db, track_ids=[track.id for track in tracks])
     return tracks, real_open_summaries
 
 
 def _build_recipient_list(
-    tracks: list[TrackedEmail],
+    tracks: list[RecipientTrackSnapshot],
     real_open_summaries: dict[str, TrackRealOpenSummary],
     now: datetime,
 ) -> list[dict]:

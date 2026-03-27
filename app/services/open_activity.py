@@ -47,7 +47,7 @@ async def load_real_open_events(
     result = await db.execute(query)
 
     real_opens: list[RealOpenEvent] = []
-    for row in result.all():
+    for row in result:
         tracked_email_id, opened_at, ip_address, user_agent, *location = row
         if detect_proxy_type(ip_address or "", user_agent or "") is not None:
             continue

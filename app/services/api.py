@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 
 from fastapi import HTTPException
-from sqlalchemy import delete, func, select
+from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database import Open, TrackedEmail
@@ -95,7 +95,8 @@ async def get_recent_real_opens(
     since_dt: datetime | None,
 ) -> list[tuple[Open, TrackedEmail]]:
     recent_opens: list[tuple[Open, TrackedEmail]] = []
-    offset = 0
+    cursor_opened_at: datetime | None = None
+    cursor_open_id: int | None = None
 
     while len(recent_opens) < RECENT_REAL_OPENS_LIMIT:
         query = (
@@ -103,11 +104,17 @@ async def get_recent_real_opens(
             .join(TrackedEmail, Open.tracked_email_id == TrackedEmail.id)
             .order_by(Open.opened_at.desc(), Open.id.desc())
             .limit(RECENT_OPEN_BATCH_SIZE)
-            .offset(offset)
         )
 
         if since_dt is not None:
             query = query.where(Open.opened_at > since_dt)
+        if cursor_opened_at is not None and cursor_open_id is not None:
+            query = query.where(
+                or_(
+                    Open.opened_at < cursor_opened_at,
+                    and_(Open.opened_at == cursor_opened_at, Open.id < cursor_open_id),
+                )
+            )
 
         result = await db.execute(query)
         rows = result.all()
@@ -126,7 +133,11 @@ async def get_recent_real_opens(
         if len(rows) < RECENT_OPEN_BATCH_SIZE:
             break
 
-        offset += RECENT_OPEN_BATCH_SIZE
+        last_open = rows[-1][0]
+        if last_open.opened_at is None:
+            break
+        cursor_opened_at = last_open.opened_at
+        cursor_open_id = last_open.id
 
     return recent_opens
 

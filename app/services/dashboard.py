@@ -1,6 +1,7 @@
 import csv
 import io
 from collections import defaultdict
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
 
@@ -18,6 +19,17 @@ VALID_FILTERS = {"all", "opened", "unopened"}
 VALID_DATE_RANGES = {"all", "7", "30", "90"}
 
 
+@dataclass(frozen=True)
+class DashboardTrackSnapshot:
+    id: str
+    recipient: str | None
+    subject: str | None
+    notes: str | None
+    message_group_id: str | None
+    created_at: datetime | None
+    pinned: bool = False
+
+
 async def build_dashboard_context(
     db: AsyncSession,
     *,
@@ -30,25 +42,12 @@ async def build_dashboard_context(
     date_range = date_range if date_range in VALID_DATE_RANGES else "all"
     page = max(page, 1)
 
-    query = select(TrackedEmail).order_by(TrackedEmail.created_at.desc())
-
     search = search.strip()
-    if search:
-        search_pattern = f"%{search}%"
-        query = query.where(
-            or_(
-                TrackedEmail.recipient.ilike(search_pattern),
-                TrackedEmail.subject.ilike(search_pattern),
-            )
-        )
-
-    if date_range != "all":
-        days = int(date_range)
-        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
-        query = query.where(TrackedEmail.created_at >= cutoff)
-
-    result = await db.execute(query)
-    tracks = result.scalars().all()
+    tracks = await _load_dashboard_track_snapshots(
+        db,
+        search=search,
+        date_range=date_range,
+    )
     opens_by_track_id = await _load_track_opens_map_asc(db, [track.id for track in tracks])
 
     groups: dict[str, list[dict]] = {}
@@ -166,10 +165,7 @@ async def update_track_notes(db: AsyncSession, track_id: str, notes: str) -> Non
 
 
 async def export_tracks_csv(db: AsyncSession) -> tuple[str, str]:
-    result = await db.execute(
-        select(TrackedEmail).order_by(TrackedEmail.created_at.desc())
-    )
-    tracks = result.scalars().all()
+    tracks = await _load_dashboard_track_snapshots(db)
     opens_by_track_id = await _load_track_opens_map_asc(db, [track.id for track in tracks])
 
     output = io.StringIO()
@@ -218,6 +214,53 @@ async def _load_track_opens_asc(db: AsyncSession, track_id: str) -> list[Open]:
     return (await _load_track_opens_map_asc(db, [track_id])).get(track_id, [])
 
 
+async def _load_dashboard_track_snapshots(
+    db: AsyncSession,
+    *,
+    search: str = "",
+    date_range: str = "all",
+) -> list[DashboardTrackSnapshot]:
+    query = (
+        select(
+            TrackedEmail.id,
+            TrackedEmail.recipient,
+            TrackedEmail.subject,
+            TrackedEmail.notes,
+            TrackedEmail.message_group_id,
+            TrackedEmail.created_at,
+            TrackedEmail.pinned,
+        )
+        .order_by(TrackedEmail.created_at.desc())
+    )
+
+    if search:
+        search_pattern = f"%{search}%"
+        query = query.where(
+            or_(
+                TrackedEmail.recipient.ilike(search_pattern),
+                TrackedEmail.subject.ilike(search_pattern),
+            )
+        )
+
+    if date_range != "all":
+        cutoff = datetime.now(timezone.utc) - timedelta(days=int(date_range))
+        query = query.where(TrackedEmail.created_at >= cutoff)
+
+    result = await db.execute(query)
+    return [
+        DashboardTrackSnapshot(
+            id=track_id,
+            recipient=recipient,
+            subject=subject,
+            notes=notes,
+            message_group_id=message_group_id,
+            created_at=created_at,
+            pinned=bool(pinned),
+        )
+        for track_id, recipient, subject, notes, message_group_id, created_at, pinned in result
+    ]
+
+
 async def _load_track_opens_map_asc(
     db: AsyncSession,
     track_ids: list[str],
@@ -232,7 +275,7 @@ async def _load_track_opens_map_asc(
     )
 
     opens_by_track_id: dict[str, list[Open]] = defaultdict(list)
-    for open_event in opens_result.scalars().all():
+    for open_event in opens_result.scalars():
         opens_by_track_id[open_event.tracked_email_id].append(open_event)
 
     return dict(opens_by_track_id)
@@ -252,7 +295,7 @@ def _partition_proxy_opens(opens: list[Open]) -> tuple[list[tuple[Open, str]], l
     return proxy_opens, real_opens
 
 
-def _build_track_summary(track: TrackedEmail, opens: list[Open]) -> dict:
+def _build_track_summary(track: DashboardTrackSnapshot, opens: list[Open]) -> dict:
     proxy_opens, real_opens = _partition_proxy_opens(opens)
 
     return {
