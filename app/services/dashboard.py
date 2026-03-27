@@ -10,7 +10,7 @@ from sqlalchemy import delete, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database import Open, TrackedEmail
-from ..open_snapshot import StoredOpenSnapshot, build_stored_open_snapshot
+from ..open_snapshot import StoredOpenSnapshot, build_open_snapshot
 from ..time_utils import ensure_utc, to_local
 from ..urls import get_pixel_url
 
@@ -338,19 +338,17 @@ async def _load_track_opens_map_asc(
         country,
         city,
     ) in opens_result:
-        stored_open = build_stored_open_snapshot(
-            opened_at=opened_at,
-            ip_address=ip_address,
-            user_agent=user_agent,
-            country=country,
-            city=city,
-            proxy_type=proxy_type,
-            is_real_open=is_real_open,
-        )
         opens_by_track_id[tracked_email_id].append(
-            OpenSnapshot(
+            build_open_snapshot(
+                OpenSnapshot,
                 tracked_email_id=tracked_email_id,
-                **vars(stored_open),
+                opened_at=opened_at,
+                ip_address=ip_address,
+                user_agent=user_agent,
+                country=country,
+                city=city,
+                proxy_type=proxy_type,
+                is_real_open=is_real_open,
             )
         )
 

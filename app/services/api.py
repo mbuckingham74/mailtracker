@@ -7,7 +7,7 @@ from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database import Open, TrackedEmail
-from ..open_snapshot import StoredOpenSnapshot, build_stored_open_snapshot
+from ..open_snapshot import StoredOpenSnapshot, build_open_snapshot
 
 RECENT_REAL_OPENS_LIMIT = 50
 RECENT_OPEN_BATCH_SIZE = 200
@@ -144,20 +144,18 @@ async def list_track_opens(db: AsyncSession, track_id: str) -> list[OpenSnapshot
         country,
         city,
     ) in result:
-        stored_open = build_stored_open_snapshot(
-            opened_at=opened_at,
-            ip_address=ip_address,
-            user_agent=user_agent,
-            country=country,
-            city=city,
-            proxy_type=proxy_type,
-            is_real_open=is_real_open,
-        )
         opens.append(
-            OpenSnapshot(
+            build_open_snapshot(
+                OpenSnapshot,
                 id=open_id,
                 referer=referer,
-                **vars(stored_open),
+                opened_at=opened_at,
+                ip_address=ip_address,
+                user_agent=user_agent,
+                country=country,
+                city=city,
+                proxy_type=proxy_type,
+                is_real_open=is_real_open,
             )
         )
     return opens
