@@ -1,6 +1,6 @@
 import uuid
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import HTTPException
 from sqlalchemy import delete, func, select
@@ -97,6 +97,7 @@ async def create_track(
         subject=subject,
         notes=notes,
         message_group_id=message_group_id,
+        created_at=datetime.now(timezone.utc),
     )
 
     db.add(new_track)

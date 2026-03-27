@@ -9,7 +9,7 @@ os.environ.setdefault("BASE_URL", "https://example.com")
 os.environ.setdefault("DASHBOARD_USERNAME", "test-user")
 os.environ.setdefault("DASHBOARD_PASSWORD", "test-password")
 
-from app.services.api import get_stats
+from app.services.api import create_track, get_stats
 
 
 class ScalarResult:
@@ -32,7 +32,45 @@ class SequenceAsyncSession:
         return self.results.pop(0)
 
 
+class CreateTrackSession:
+    def __init__(self) -> None:
+        self.added = []
+        self.commits = 0
+        self.refreshed = []
+
+    def add(self, obj) -> None:
+        self.added.append(obj)
+
+    async def commit(self) -> None:
+        self.commits += 1
+
+    async def refresh(self, obj) -> None:
+        self.refreshed.append(obj)
+
+
 class ApiServiceTests(unittest.IsolatedAsyncioTestCase):
+    async def test_create_track_sets_created_at_in_utc(self) -> None:
+        before = datetime.now(timezone.utc)
+        db = CreateTrackSession()
+
+        track = await create_track(
+            db,
+            recipient="alice@example.com",
+            subject="Hello",
+            notes=None,
+            message_group_id=None,
+        )
+
+        after = datetime.now(timezone.utc)
+
+        self.assertIs(track, db.added[0])
+        self.assertEqual(1, db.commits)
+        self.assertEqual([track], db.refreshed)
+        self.assertIsNotNone(track.created_at)
+        self.assertEqual(timezone.utc, track.created_at.tzinfo)
+        self.assertGreaterEqual(track.created_at, before)
+        self.assertLessEqual(track.created_at, after)
+
     async def test_get_stats_includes_latest_real_open_metadata(self) -> None:
         opened_at = datetime(2026, 3, 27, 18, 0)
         db = SequenceAsyncSession(

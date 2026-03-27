@@ -88,6 +88,7 @@ async def record_pixel_open(
     db.add(
         Open(
             tracked_email_id=tracking_id,
+            opened_at=now,
             ip_address=ip_address,
             user_agent=user_agent,
             referer=referer,
