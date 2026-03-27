@@ -7,7 +7,7 @@ from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database import Open, TrackedEmail
-from ..open_snapshot import StoredOpenSnapshot, build_open_snapshot
+from .open_activity import TrackOpenRecord, load_track_open_records
 
 RECENT_REAL_OPENS_LIMIT = 50
 RECENT_OPEN_BATCH_SIZE = 200
@@ -38,12 +38,6 @@ class RecentOpenTrackSnapshot:
     id: str
     recipient: str | None
     subject: str | None
-
-
-@dataclass(frozen=True)
-class OpenSnapshot(StoredOpenSnapshot):
-    id: int
-    referer: str | None
 
 
 async def list_tracks(db: AsyncSession) -> list[tuple[TrackSnapshot, int]]:
@@ -110,55 +104,14 @@ async def create_track(
 async def get_track_with_opens(
     db: AsyncSession,
     track_id: str,
-) -> tuple[TrackSnapshot, list[OpenSnapshot]]:
+) -> tuple[TrackSnapshot, list[TrackOpenRecord]]:
     track = await _get_track_or_404(db, track_id)
     opens = await list_track_opens(db, track_id)
     return track, opens
 
 
-async def list_track_opens(db: AsyncSession, track_id: str) -> list[OpenSnapshot]:
-    result = await db.execute(
-        select(
-            Open.id,
-            Open.opened_at,
-            Open.is_real_open,
-            Open.proxy_type,
-            Open.ip_address,
-            Open.user_agent,
-            Open.referer,
-            Open.country,
-            Open.city,
-        )
-        .where(Open.tracked_email_id == track_id)
-        .order_by(Open.opened_at.desc(), Open.id.desc())
-    )
-    opens: list[OpenSnapshot] = []
-    for (
-        open_id,
-        opened_at,
-        is_real_open,
-        proxy_type,
-        ip_address,
-        user_agent,
-        referer,
-        country,
-        city,
-    ) in result:
-        opens.append(
-            build_open_snapshot(
-                OpenSnapshot,
-                id=open_id,
-                referer=referer,
-                opened_at=opened_at,
-                ip_address=ip_address,
-                user_agent=user_agent,
-                country=country,
-                city=city,
-                proxy_type=proxy_type,
-                is_real_open=is_real_open,
-            )
-        )
-    return opens
+async def list_track_opens(db: AsyncSession, track_id: str) -> list[TrackOpenRecord]:
+    return await load_track_open_records(db, track_id, order="desc")
 
 
 async def delete_track(db: AsyncSession, track_id: str) -> None:

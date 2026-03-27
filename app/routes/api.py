@@ -15,6 +15,7 @@ from ..services.api import (
     list_track_opens as list_track_open_records,
     list_tracks as list_track_summaries,
 )
+from ..services.open_activity import TrackOpenRecord
 from ..urls import get_pixel_url
 
 router = APIRouter(prefix="/api")
@@ -71,6 +72,20 @@ class StatsResponse(BaseModel):
     total_tracks: int
     total_opens: int
     tracks_with_opens: int
+
+
+def _build_open_response(open_record: TrackOpenRecord) -> OpenResponse:
+    return OpenResponse(
+        id=open_record.id,
+        opened_at=open_record.opened_at,
+        ip_address=open_record.ip_address,
+        user_agent=open_record.user_agent,
+        referer=open_record.referer,
+        country=open_record.country,
+        city=open_record.city,
+        proxy_type=open_record.proxy_type,
+        is_real_open=open_record.is_real_open,
+    )
 
 
 @router.get("/tracks", response_model=List[TrackResponse])
@@ -136,20 +151,7 @@ async def get_track(
         created_at=track.created_at,
         open_count=len(opens),
         pixel_url=get_pixel_url(track.id),
-        opens=[
-            OpenResponse(
-                id=open_record.id,
-                opened_at=open_record.opened_at,
-                ip_address=open_record.ip_address,
-                user_agent=open_record.user_agent,
-                referer=open_record.referer,
-                country=open_record.country,
-                city=open_record.city,
-                proxy_type=open_record.proxy_type,
-                is_real_open=open_record.is_real_open,
-            )
-            for open_record in opens
-        ],
+        opens=[_build_open_response(open_record) for open_record in opens],
     )
 
 
@@ -160,20 +162,7 @@ async def get_track_opens(
     _auth: bool = Depends(verify_api_key)
 ):
     opens = await list_track_open_records(db, track_id)
-    return [
-        OpenResponse(
-            id=open_record.id,
-            opened_at=open_record.opened_at,
-            ip_address=open_record.ip_address,
-            user_agent=open_record.user_agent,
-            referer=open_record.referer,
-            country=open_record.country,
-            city=open_record.city,
-            proxy_type=open_record.proxy_type,
-            is_real_open=open_record.is_real_open,
-        )
-        for open_record in opens
-    ]
+    return [_build_open_response(open_record) for open_record in opens]
 
 
 @router.delete("/tracks/{track_id}")

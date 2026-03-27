@@ -1,6 +1,5 @@
 import csv
 import io
-from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
@@ -9,10 +8,16 @@ from fastapi import HTTPException
 from sqlalchemy import delete, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..database import Open, TrackedEmail
-from ..open_snapshot import StoredOpenSnapshot, build_open_snapshot
+from ..database import TrackedEmail
 from ..time_utils import ensure_utc, to_local
 from ..urls import get_pixel_url
+from .open_activity import (
+    TrackOpenRecord,
+    TrackOpenSummary,
+    load_track_open_records,
+    load_track_open_records_map,
+    load_track_open_summaries,
+)
 
 ITEMS_PER_PAGE = 25
 VALID_FILTERS = {"all", "opened", "unopened"}
@@ -39,21 +44,6 @@ class DetailTrackSnapshot:
     created_at: datetime | None
 
 
-@dataclass(frozen=True)
-class OpenSnapshot(StoredOpenSnapshot):
-    tracked_email_id: str
-
-
-@dataclass
-class DashboardOpenSummary:
-    open_count: int = 0
-    real_open_count: int = 0
-    first_open: datetime | None = None
-    first_real_open: datetime | None = None
-    first_proxy_open: datetime | None = None
-    first_proxy_type: str | None = None
-
-
 async def build_dashboard_context(
     db: AsyncSession,
     *,
@@ -72,7 +62,10 @@ async def build_dashboard_context(
         search=search,
         date_range=date_range,
     )
-    open_summaries = await _load_dashboard_open_summaries(db, [track.id for track in tracks])
+    open_summaries = await load_track_open_summaries(
+        db,
+        track_ids=[track.id for track in tracks],
+    )
 
     groups: dict[str, list[dict]] = {}
     ungrouped: list[dict] = []
@@ -141,7 +134,7 @@ async def build_detail_context(db: AsyncSession, track_id: str) -> dict:
         created_at=row[4],
     )
 
-    opens_asc = await _load_track_opens_asc(db, track_id)
+    opens_asc = await load_track_open_records(db, track_id)
     proxy_opens, real_opens = _partition_proxy_opens(opens_asc)
 
     first_known_proxy = next(
@@ -211,7 +204,10 @@ async def update_track_notes(db: AsyncSession, track_id: str, notes: str) -> Non
 
 async def export_tracks_csv(db: AsyncSession) -> tuple[str, str]:
     tracks = await _load_dashboard_track_snapshots(db)
-    opens_by_track_id = await _load_track_opens_map_asc(db, [track.id for track in tracks])
+    opens_by_track_id = await load_track_open_records_map(
+        db,
+        [track.id for track in tracks],
+    )
 
     output = io.StringIO()
     writer = csv.writer(output)
@@ -252,10 +248,6 @@ async def export_tracks_csv(db: AsyncSession) -> tuple[str, str]:
     output.seek(0)
     export_date = to_local(datetime.now(timezone.utc)).strftime("%Y-%m-%d")
     return f"mailtrack_export_{export_date}.csv", output.getvalue()
-
-
-async def _load_track_opens_asc(db: AsyncSession, track_id: str) -> list[OpenSnapshot]:
-    return (await _load_track_opens_map_asc(db, [track_id])).get(track_id, [])
 
 
 async def _load_dashboard_track_snapshots(
@@ -305,99 +297,11 @@ async def _load_dashboard_track_snapshots(
     ]
 
 
-async def _load_track_opens_map_asc(
-    db: AsyncSession,
-    track_ids: list[str],
-) -> dict[str, list[OpenSnapshot]]:
-    if not track_ids:
-        return {}
-
-    opens_result = await db.execute(
-        select(
-            Open.tracked_email_id,
-            Open.opened_at,
-            Open.is_real_open,
-            Open.proxy_type,
-            Open.ip_address,
-            Open.user_agent,
-            Open.country,
-            Open.city,
-        )
-        .where(Open.tracked_email_id.in_(track_ids))
-        .order_by(Open.tracked_email_id.asc(), Open.opened_at.asc(), Open.id.asc())
-    )
-
-    opens_by_track_id: dict[str, list[OpenSnapshot]] = defaultdict(list)
-    for (
-        tracked_email_id,
-        opened_at,
-        is_real_open,
-        proxy_type,
-        ip_address,
-        user_agent,
-        country,
-        city,
-    ) in opens_result:
-        opens_by_track_id[tracked_email_id].append(
-            build_open_snapshot(
-                OpenSnapshot,
-                tracked_email_id=tracked_email_id,
-                opened_at=opened_at,
-                ip_address=ip_address,
-                user_agent=user_agent,
-                country=country,
-                city=city,
-                proxy_type=proxy_type,
-                is_real_open=is_real_open,
-            )
-        )
-
-    return dict(opens_by_track_id)
-
-
-async def _load_dashboard_open_summaries(
-    db: AsyncSession,
-    track_ids: list[str],
-) -> dict[str, DashboardOpenSummary]:
-    if not track_ids:
-        return {}
-
-    result = await db.execute(
-        select(
-            Open.tracked_email_id,
-            Open.opened_at,
-            Open.is_real_open,
-            Open.proxy_type,
-        )
-        .where(Open.tracked_email_id.in_(track_ids))
-        .order_by(Open.tracked_email_id.asc(), Open.opened_at.asc(), Open.id.asc())
-    )
-
-    summaries: dict[str, DashboardOpenSummary] = {}
-    for tracked_email_id, opened_at, is_real_open, proxy_type in result:
-        summary = summaries.setdefault(tracked_email_id, DashboardOpenSummary())
-        summary.open_count += 1
-        if summary.first_open is None:
-            summary.first_open = opened_at
-
-        if not is_real_open:
-            if summary.first_proxy_open is None and proxy_type is not None:
-                summary.first_proxy_open = opened_at
-                summary.first_proxy_type = proxy_type
-            continue
-
-        summary.real_open_count += 1
-        if summary.first_real_open is None:
-            summary.first_real_open = opened_at
-
-    return summaries
-
-
 def _partition_proxy_opens(
-    opens: list[OpenSnapshot],
-) -> tuple[list[tuple[OpenSnapshot, str | None]], list[OpenSnapshot]]:
-    proxy_opens: list[tuple[OpenSnapshot, str | None]] = []
-    real_opens: list[OpenSnapshot] = []
+    opens: list[TrackOpenRecord],
+) -> tuple[list[tuple[TrackOpenRecord, str | None]], list[TrackOpenRecord]]:
+    proxy_opens: list[tuple[TrackOpenRecord, str | None]] = []
+    real_opens: list[TrackOpenRecord] = []
 
     for open_event in opens:
         if not open_event.is_real_open:
@@ -410,9 +314,9 @@ def _partition_proxy_opens(
 
 def _build_track_summary(
     track: DashboardTrackSnapshot,
-    open_summary: DashboardOpenSummary | None,
+    open_summary: TrackOpenSummary | None,
 ) -> dict:
-    open_summary = open_summary or DashboardOpenSummary()
+    open_summary = open_summary or TrackOpenSummary()
 
     return {
         "track": track,
