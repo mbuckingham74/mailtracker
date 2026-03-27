@@ -1,11 +1,25 @@
 import logging
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, String, Text, select, text
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy import (
+    Boolean,
+    Column,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    bindparam,
+    select,
+    text,
+    update,
+)
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession, create_async_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy.sql import func
 
 from .config import settings
+from .open_classification import resolve_open_classification
 
 logger = logging.getLogger(__name__)
 
@@ -13,6 +27,7 @@ engine = create_async_engine(settings.database_url, echo=False)
 async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 Base = declarative_base()
+OPEN_CLASSIFICATION_BACKFILL_BATCH_SIZE = 1000
 
 STARTUP_MIGRATIONS = {
     "tracked_emails": {
@@ -140,6 +155,65 @@ async def init_database():
                     index_name,
                 )
                 await conn.execute(text(ddl))
+
+        await _backfill_missing_open_classification(conn)
+
+
+async def _backfill_missing_open_classification(conn: AsyncConnection) -> None:
+    total_backfilled = 0
+
+    while True:
+        result = await conn.execute(
+            select(
+                Open.id,
+                Open.is_real_open,
+                Open.proxy_type,
+                Open.ip_address,
+                Open.user_agent,
+            )
+            .where(Open.is_real_open.is_(None))
+            .order_by(Open.id.asc())
+            .limit(OPEN_CLASSIFICATION_BACKFILL_BATCH_SIZE)
+        )
+        rows = result.all()
+        if not rows:
+            break
+
+        updates = []
+        for open_id, is_real_open, proxy_type, ip_address, user_agent in rows:
+            resolved_is_real_open, resolved_proxy_type = resolve_open_classification(
+                is_real_open=is_real_open,
+                proxy_type=proxy_type,
+                ip_address=ip_address,
+                user_agent=user_agent,
+            )
+            updates.append(
+                {
+                    "target_open_id": open_id,
+                    "is_real_open": resolved_is_real_open,
+                    "proxy_type": resolved_proxy_type,
+                }
+            )
+
+        await conn.execute(
+            update(Open)
+            .where(Open.id == bindparam("target_open_id"))
+            .values(
+                is_real_open=bindparam("is_real_open"),
+                proxy_type=bindparam("proxy_type"),
+            ),
+            updates,
+        )
+        total_backfilled += len(updates)
+
+        if len(rows) < OPEN_CLASSIFICATION_BACKFILL_BATCH_SIZE:
+            break
+
+    if total_backfilled:
+        logger.warning(
+            "Backfilled open classification for %s legacy opens",
+            total_backfilled,
+        )
 
 
 async def check_database_health() -> tuple[bool, str | None]:
