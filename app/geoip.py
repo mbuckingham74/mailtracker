@@ -47,8 +47,12 @@ async def download_database() -> bool:
                 if member.name.endswith(".mmdb"):
                     # Extract just the mmdb file
                     member.name = Path(member.name).name
-                    tar.extract(member, GEOIP_DIR)
+                    tar.extract(member, GEOIP_DIR, filter="data")
                     break
+            else:
+                raise RuntimeError(
+                    "Downloaded GeoIP archive did not contain a .mmdb database"
+                )
 
         # Clean up tar file
         tar_path.unlink()
