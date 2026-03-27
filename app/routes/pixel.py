@@ -2,6 +2,7 @@ from fastapi import APIRouter, Request, Depends, BackgroundTasks
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
+from ..client_ip import get_client_ip
 from ..database import get_db, TrackedEmail, Open
 from ..geoip import lookup_ip
 from ..proxy_detection import detect_proxy_type
@@ -28,6 +29,7 @@ MIN_OPEN_DELAY_SECONDS = 5
 async def track_pixel(
     tracking_id: str,
     request: Request,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db)
 ):
     # Always return pixel regardless of whether tracking_id exists
@@ -56,13 +58,10 @@ async def track_pixel(
                 pass
             else:
                 # Get client info
-                ip_address = request.headers.get("X-Real-IP") or request.headers.get("X-Forwarded-For") or request.client.host
-                # Handle comma-separated list of IPs (from proxies)
-                if ip_address and "," in ip_address:
-                    ip_address = ip_address.split(",")[0].strip()
-
+                ip_address = get_client_ip(request) or (request.client.host if request.client else "")
                 user_agent = request.headers.get("User-Agent", "")
                 referer = request.headers.get("Referer", "")
+                proxy_type = detect_proxy_type(ip_address, user_agent)
 
                 # GeoIP lookup
                 country, city = lookup_ip(ip_address)
@@ -74,7 +73,7 @@ async def track_pixel(
                 should_notify = (
                     tracked_email.notified_at is None and
                     is_email_notifications_enabled() and
-                    detect_proxy_type(ip_address, user_agent) is None  # Real open, not proxy
+                    proxy_type is None  # Real open, not proxy
                 )
 
                 # Log the open
@@ -94,24 +93,22 @@ async def track_pixel(
 
                 await db.commit()
 
-                # Send notification after commit (blocking SMTP call)
+                # Queue notifications after commit so the pixel response stays fast.
                 if should_notify:
-                    try:
-                        send_open_notification(
-                            recipient=email_recipient,
-                            subject=email_subject,
-                            opened_at=now,
-                            country=country,
-                            city=city,
-                            track_id=tracking_id,
-                            sent_at=email_sent_at
-                        )
-                    except Exception as notify_error:
-                        logger.error(f"Failed to send notification for {tracking_id}: {notify_error}")
+                    background_tasks.add_task(
+                        send_open_notification,
+                        recipient=email_recipient,
+                        subject=email_subject,
+                        opened_at=now,
+                        country=country,
+                        city=city,
+                        track_id=tracking_id,
+                        sent_at=email_sent_at
+                    )
 
                 # Check for hot conversation (3+ real opens in 24 hours)
                 # Only check if this was a real open (not proxy) and we haven't already notified
-                is_real_open = detect_proxy_type(ip_address, user_agent) is None
+                is_real_open = proxy_type is None
                 if is_real_open and is_email_notifications_enabled():
                     # Re-fetch tracked_email to check hot_notified_at
                     result = await db.execute(
@@ -135,15 +132,13 @@ async def track_pixel(
                             tracked_email_fresh.hot_notified_at = now
                             await db.commit()
 
-                            try:
-                                send_hot_conversation_notification(
-                                    recipient=email_recipient,
-                                    subject=email_subject,
-                                    open_count=open_count,
-                                    track_id=tracking_id
-                                )
-                            except Exception as hot_error:
-                                logger.error(f"Failed to send hot conversation notification for {tracking_id}: {hot_error}")
+                            background_tasks.add_task(
+                                send_hot_conversation_notification,
+                                recipient=email_recipient,
+                                subject=email_subject,
+                                open_count=open_count,
+                                track_id=tracking_id
+                            )
 
                     # Check for revived conversation (open 2+ weeks after first open)
                     # Re-fetch to get current state after potential hot notification update
@@ -172,15 +167,13 @@ async def track_pixel(
                                 tracked_email_fresh.revived_notified_at = now
                                 await db.commit()
 
-                                try:
-                                    send_revived_conversation_notification(
-                                        recipient=email_recipient,
-                                        subject=email_subject,
-                                        days_since_first_open=days_since_first_open,
-                                        track_id=tracking_id
-                                    )
-                                except Exception as revived_error:
-                                    logger.error(f"Failed to send revived conversation notification for {tracking_id}: {revived_error}")
+                                background_tasks.add_task(
+                                    send_revived_conversation_notification,
+                                    recipient=email_recipient,
+                                    subject=email_subject,
+                                    days_since_first_open=days_since_first_open,
+                                    track_id=tracking_id
+                                )
     except Exception as e:
         # Log the error but don't break pixel delivery
         logger.exception(f"Failed to record open for tracking_id={tracking_id}: {e}")
@@ -192,6 +185,7 @@ async def track_pixel(
     return Response(
         content=PIXEL_GIF,
         media_type="image/gif",
+        background=background_tasks,
         headers={
             "Cache-Control": "no-cache, no-store, must-revalidate",
             "Pragma": "no-cache",

@@ -20,6 +20,9 @@ BASE_URL = os.getenv("BASE_URL", "").rstrip("/")
 if not BASE_URL:
     raise RuntimeError("Required environment variable BASE_URL is not set (e.g., https://mailtrack.example.com)")
 
+RECENT_REAL_OPENS_LIMIT = 50
+RECENT_OPEN_BATCH_SIZE = 200
+
 
 def get_pixel_url(track_id: str) -> str:
     """Generate absolute pixel URL for a track."""
@@ -258,29 +261,32 @@ async def get_recent_opens(
     Get recent real opens (excluding proxy opens) since a given timestamp.
     Used by Chrome extension for browser notifications.
     """
-    # Build query for opens with their tracked emails
-    query = (
-        select(Open, TrackedEmail)
-        .join(TrackedEmail, Open.tracked_email_id == TrackedEmail.id)
-        .order_by(Open.opened_at.desc())
-    )
-
-    # Filter by timestamp if provided
-    if since is not None:
-        since_dt = datetime.fromtimestamp(since, tz=timezone.utc)
-        query = query.where(Open.opened_at > since_dt)
-
-    # Limit to last 50 opens max
-    query = query.limit(50)
-
-    result = await db.execute(query)
-    rows = result.all()
-
-    # Filter to real opens only (exclude proxy)
     recent_opens = []
-    for open_record, tracked_email in rows:
-        proxy_type = detect_proxy_type(open_record.ip_address or "", open_record.user_agent or "")
-        if proxy_type is None:  # Real open
+    offset = 0
+    since_dt = datetime.fromtimestamp(since, tz=timezone.utc) if since is not None else None
+
+    while len(recent_opens) < RECENT_REAL_OPENS_LIMIT:
+        query = (
+            select(Open, TrackedEmail)
+            .join(TrackedEmail, Open.tracked_email_id == TrackedEmail.id)
+            .order_by(Open.opened_at.desc())
+            .limit(RECENT_OPEN_BATCH_SIZE)
+            .offset(offset)
+        )
+
+        if since_dt is not None:
+            query = query.where(Open.opened_at > since_dt)
+
+        result = await db.execute(query)
+        rows = result.all()
+        if not rows:
+            break
+
+        for open_record, tracked_email in rows:
+            proxy_type = detect_proxy_type(open_record.ip_address or "", open_record.user_agent or "")
+            if proxy_type is not None:
+                continue
+
             recent_opens.append(RecentOpenResponse(
                 open_id=open_record.id,
                 opened_at=open_record.opened_at,
@@ -290,5 +296,13 @@ async def get_recent_opens(
                 city=open_record.city,
                 track_id=tracked_email.id
             ))
+
+            if len(recent_opens) >= RECENT_REAL_OPENS_LIMIT:
+                break
+
+        if len(rows) < RECENT_OPEN_BATCH_SIZE:
+            break
+
+        offset += RECENT_OPEN_BATCH_SIZE
 
     return recent_opens

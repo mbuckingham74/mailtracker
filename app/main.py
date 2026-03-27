@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 from dotenv import load_dotenv
@@ -13,7 +14,7 @@ load_dotenv()
 
 from .routes import pixel, api, dashboard
 from .geoip import init_geoip
-from .database import async_session, TrackedEmail, Open
+from .database import async_session, TrackedEmail, Open, check_database_health, init_database
 from .notifications import send_followup_reminder, is_email_notifications_enabled
 from .proxy_detection import detect_proxy_type
 from sqlalchemy import select
@@ -68,7 +69,8 @@ async def check_followup_reminders():
             # If no real opens, send follow-up reminder
             if not has_real_open:
                 days_ago = (now - track.created_at.replace(tzinfo=timezone.utc)).days
-                success = send_followup_reminder(
+                success = await asyncio.to_thread(
+                    send_followup_reminder,
                     recipient=track.recipient,
                     subject=track.subject,
                     sent_at=track.created_at,
@@ -98,6 +100,8 @@ async def followup_reminder_task():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    await init_database()
+
     # Startup: Initialize GeoIP database
     await init_geoip()
 
@@ -137,4 +141,11 @@ app.include_router(dashboard.router)  # Web UI (session protected)
 
 @app.get("/health")
 async def health_check():
-    return {"status": "ok"}
+    database_ok, _ = await check_database_health()
+    if not database_ok:
+        return JSONResponse(
+            status_code=503,
+            content={"status": "error", "database": "unavailable"},
+        )
+
+    return {"status": "ok", "database": "ok"}

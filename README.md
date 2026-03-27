@@ -143,6 +143,7 @@ SECRET_KEY=your-secret-key-here
 API_KEY=your-api-key-here
 DASHBOARD_USERNAME=admin
 DASHBOARD_PASSWORD=your-password-here
+TRUSTED_PROXY_CIDRS=127.0.0.1/32,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
 
 # Notifications (optional)
 SMTP_SERVER=smtp.gmail.com
@@ -158,6 +159,9 @@ FOLLOWUP_DAYS=3
 ```bash
 docker compose up -d
 ```
+
+On startup the app will create missing tables and backfill any known compatibility columns required by the current ORM schema.
+Set `TRUSTED_PROXY_CIDRS` to the address range used by your reverse proxy so forwarded client IPs are only accepted from trusted hops.
 
 ### 4. Install Chrome Extension
 
@@ -194,7 +198,9 @@ CREATE TABLE tracked_emails (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     notified_at DATETIME NULL,
     pinned BOOLEAN DEFAULT FALSE,
-    followup_notified_at DATETIME NULL
+    followup_notified_at DATETIME NULL,
+    hot_notified_at DATETIME NULL,
+    revived_notified_at DATETIME NULL
 );
 
 CREATE TABLE opens (

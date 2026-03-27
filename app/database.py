@@ -1,8 +1,12 @@
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.orm import sessionmaker, declarative_base
-from sqlalchemy import Column, String, Text, DateTime, Integer, ForeignKey, Boolean
-from sqlalchemy.sql import func
+import logging
 import os
+
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text, select, text
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.sql import func
+
+logger = logging.getLogger(__name__)
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
@@ -12,6 +16,13 @@ engine = create_async_engine(DATABASE_URL, echo=False)
 async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 Base = declarative_base()
+
+STARTUP_MIGRATIONS = {
+    "tracked_emails": {
+        "hot_notified_at": "ALTER TABLE tracked_emails ADD COLUMN hot_notified_at DATETIME NULL",
+        "revived_notified_at": "ALTER TABLE tracked_emails ADD COLUMN revived_notified_at DATETIME NULL",
+    }
+}
 
 
 class TrackedEmail(Base):
@@ -46,3 +57,45 @@ class Open(Base):
 async def get_db():
     async with async_session() as session:
         yield session
+
+
+async def init_database():
+    """Create missing tables and apply lightweight compatibility migrations."""
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+        for table_name, migrations in STARTUP_MIGRATIONS.items():
+            result = await conn.execute(
+                text(
+                    """
+                    SELECT COLUMN_NAME
+                    FROM INFORMATION_SCHEMA.COLUMNS
+                    WHERE TABLE_SCHEMA = DATABASE()
+                      AND TABLE_NAME = :table_name
+                    """
+                ),
+                {"table_name": table_name},
+            )
+            existing_columns = {row[0] for row in result}
+
+            for column_name, ddl in migrations.items():
+                if column_name in existing_columns:
+                    continue
+
+                logger.warning(
+                    "Applying startup migration for %s.%s",
+                    table_name,
+                    column_name,
+                )
+                await conn.execute(text(ddl))
+
+
+async def check_database_health() -> tuple[bool, str | None]:
+    """Verify database connectivity and ORM/schema compatibility."""
+    try:
+        async with async_session() as session:
+            await session.execute(select(TrackedEmail).limit(1))
+            await session.execute(select(Open).limit(1))
+        return True, None
+    except Exception as exc:
+        return False, str(exc)
