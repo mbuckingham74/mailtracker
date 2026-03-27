@@ -10,7 +10,7 @@ from sqlalchemy import delete, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database import Open, TrackedEmail
-from ..proxy_detection import detect_proxy_type
+from ..open_classification import resolve_open_classification
 from ..time_utils import ensure_utc, to_local
 from ..urls import get_pixel_url
 
@@ -47,6 +47,8 @@ class OpenSnapshot:
     user_agent: str | None
     country: str | None
     city: str | None
+    proxy_type: str | None
+    is_real_open: bool
 
 
 @dataclass
@@ -149,8 +151,16 @@ async def build_detail_context(db: AsyncSession, track_id: str) -> dict:
     opens_asc = await _load_track_opens_asc(db, track_id)
     proxy_opens, real_opens = _partition_proxy_opens(opens_asc)
 
-    first_proxy_open = proxy_opens[0][0].opened_at if proxy_opens else None
-    first_proxy_type = proxy_opens[0][1] if proxy_opens else None
+    first_known_proxy = next(
+        (
+            (open_event, proxy_type)
+            for open_event, proxy_type in proxy_opens
+            if proxy_type is not None
+        ),
+        None,
+    )
+    first_proxy_open = first_known_proxy[0].opened_at if first_known_proxy else None
+    first_proxy_type = first_known_proxy[1] if first_known_proxy else None
     opens = list(reversed(opens_asc))
 
     pixel_url = get_pixel_url(track.id)
@@ -231,7 +241,6 @@ async def export_tracks_csv(db: AsyncSession) -> tuple[str, str]:
         email_created = to_local(track.created_at).strftime("%Y-%m-%d %H:%M:%S %Z") if track.created_at else ""
 
         for open_event in opens:
-            proxy_type = detect_proxy_type(open_event.ip_address, open_event.user_agent or "")
             opened_at = to_local(open_event.opened_at).strftime("%Y-%m-%d %H:%M:%S %Z") if open_event.opened_at else ""
             writer.writerow([
                 track.id,
@@ -243,8 +252,8 @@ async def export_tracks_csv(db: AsyncSession) -> tuple[str, str]:
                 open_event.country or "",
                 open_event.city or "",
                 open_event.user_agent or "",
-                proxy_type or "",
-                "no" if proxy_type else "yes",
+                open_event.proxy_type or "",
+                "yes" if open_event.is_real_open else "no",
             ])
 
     output.seek(0)
@@ -314,6 +323,8 @@ async def _load_track_opens_map_asc(
         select(
             Open.tracked_email_id,
             Open.opened_at,
+            Open.is_real_open,
+            Open.proxy_type,
             Open.ip_address,
             Open.user_agent,
             Open.country,
@@ -324,7 +335,22 @@ async def _load_track_opens_map_asc(
     )
 
     opens_by_track_id: dict[str, list[OpenSnapshot]] = defaultdict(list)
-    for tracked_email_id, opened_at, ip_address, user_agent, country, city in opens_result:
+    for (
+        tracked_email_id,
+        opened_at,
+        is_real_open,
+        proxy_type,
+        ip_address,
+        user_agent,
+        country,
+        city,
+    ) in opens_result:
+        resolved_is_real_open, resolved_proxy_type = resolve_open_classification(
+            is_real_open=is_real_open,
+            proxy_type=proxy_type,
+            ip_address=ip_address,
+            user_agent=user_agent,
+        )
         opens_by_track_id[tracked_email_id].append(
             OpenSnapshot(
                 tracked_email_id=tracked_email_id,
@@ -333,6 +359,8 @@ async def _load_track_opens_map_asc(
                 user_agent=user_agent,
                 country=country,
                 city=city,
+                proxy_type=resolved_proxy_type,
+                is_real_open=resolved_is_real_open,
             )
         )
 
@@ -350,6 +378,8 @@ async def _load_dashboard_open_summaries(
         select(
             Open.tracked_email_id,
             Open.opened_at,
+            Open.is_real_open,
+            Open.proxy_type,
             Open.ip_address,
             Open.user_agent,
         )
@@ -358,17 +388,22 @@ async def _load_dashboard_open_summaries(
     )
 
     summaries: dict[str, DashboardOpenSummary] = {}
-    for tracked_email_id, opened_at, ip_address, user_agent in result:
+    for tracked_email_id, opened_at, is_real_open, proxy_type, ip_address, user_agent in result:
         summary = summaries.setdefault(tracked_email_id, DashboardOpenSummary())
         summary.open_count += 1
         if summary.first_open is None:
             summary.first_open = opened_at
 
-        proxy_type = detect_proxy_type(ip_address, user_agent or "")
-        if proxy_type is not None:
-            if summary.first_proxy_open is None:
+        resolved_is_real_open, resolved_proxy_type = resolve_open_classification(
+            is_real_open=is_real_open,
+            proxy_type=proxy_type,
+            ip_address=ip_address,
+            user_agent=user_agent,
+        )
+        if not resolved_is_real_open:
+            if summary.first_proxy_open is None and resolved_proxy_type is not None:
                 summary.first_proxy_open = opened_at
-                summary.first_proxy_type = proxy_type
+                summary.first_proxy_type = resolved_proxy_type
             continue
 
         summary.real_open_count += 1
@@ -380,14 +415,13 @@ async def _load_dashboard_open_summaries(
 
 def _partition_proxy_opens(
     opens: list[OpenSnapshot],
-) -> tuple[list[tuple[OpenSnapshot, str]], list[OpenSnapshot]]:
-    proxy_opens: list[tuple[OpenSnapshot, str]] = []
+) -> tuple[list[tuple[OpenSnapshot, str | None]], list[OpenSnapshot]]:
+    proxy_opens: list[tuple[OpenSnapshot, str | None]] = []
     real_opens: list[OpenSnapshot] = []
 
     for open_event in opens:
-        proxy_type = detect_proxy_type(open_event.ip_address, open_event.user_agent or "")
-        if proxy_type:
-            proxy_opens.append((open_event, proxy_type))
+        if not open_event.is_real_open:
+            proxy_opens.append((open_event, open_event.proxy_type))
         else:
             real_opens.append(open_event)
 
