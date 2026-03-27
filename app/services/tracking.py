@@ -1,8 +1,9 @@
 import logging
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 from fastapi import BackgroundTasks, Request
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..client_ip import get_client_ip
@@ -23,6 +24,16 @@ logger = logging.getLogger(__name__)
 MIN_OPEN_DELAY_SECONDS = 5
 
 
+@dataclass(frozen=True)
+class TrackingSnapshot:
+    recipient: str | None
+    subject: str | None
+    created_at: datetime | None
+    notified_at: datetime | None
+    hot_notified_at: datetime | None
+    revived_notified_at: datetime | None
+
+
 async def record_pixel_open(
     db: AsyncSession,
     tracking_id: str,
@@ -30,11 +41,26 @@ async def record_pixel_open(
     background_tasks: BackgroundTasks,
 ) -> None:
     result = await db.execute(
-        select(TrackedEmail).where(TrackedEmail.id == tracking_id)
+        select(
+            TrackedEmail.recipient,
+            TrackedEmail.subject,
+            TrackedEmail.created_at,
+            TrackedEmail.notified_at,
+            TrackedEmail.hot_notified_at,
+            TrackedEmail.revived_notified_at,
+        ).where(TrackedEmail.id == tracking_id)
     )
-    tracked_email = result.scalar_one_or_none()
-    if not tracked_email:
+    row = result.one_or_none()
+    if row is None:
         return
+    tracked_email = TrackingSnapshot(
+        recipient=row[0],
+        subject=row[1],
+        created_at=row[2],
+        notified_at=row[3],
+        hot_notified_at=row[4],
+        revived_notified_at=row[5],
+    )
 
     now = datetime.now(timezone.utc)
     created_at = ensure_utc(tracked_email.created_at)
@@ -70,8 +96,9 @@ async def record_pixel_open(
         )
     )
 
+    update_values: dict[str, datetime] = {}
     if should_notify:
-        tracked_email.notified_at = now
+        update_values["notified_at"] = now
 
     should_send_hot_conversation = False
     hot_open_count = 0
@@ -84,7 +111,7 @@ async def record_pixel_open(
         if tracked_email.hot_notified_at is None:
             hot_open_count = await _load_recent_real_open_count(db, tracking_id, now)
             if hot_open_count >= 3:
-                tracked_email.hot_notified_at = now
+                update_values["hot_notified_at"] = now
                 should_send_hot_conversation = True
 
         if tracked_email.revived_notified_at is None:
@@ -92,8 +119,15 @@ async def record_pixel_open(
             if first_real_open_at is not None:
                 days_since_first_real_open = (now - first_real_open_at).days
                 if days_since_first_real_open >= 14:
-                    tracked_email.revived_notified_at = now
+                    update_values["revived_notified_at"] = now
                     should_send_revived_conversation = True
+
+    if update_values:
+        await db.execute(
+            update(TrackedEmail)
+            .where(TrackedEmail.id == tracking_id)
+            .values(**update_values)
+        )
 
     await db.commit()
 

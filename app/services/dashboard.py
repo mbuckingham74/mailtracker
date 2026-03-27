@@ -39,6 +39,26 @@ class DetailTrackSnapshot:
     created_at: datetime | None
 
 
+@dataclass(frozen=True)
+class OpenSnapshot:
+    tracked_email_id: str
+    opened_at: datetime | None
+    ip_address: str | None
+    user_agent: str | None
+    country: str | None
+    city: str | None
+
+
+@dataclass
+class DashboardOpenSummary:
+    open_count: int = 0
+    real_open_count: int = 0
+    first_open: datetime | None = None
+    first_real_open: datetime | None = None
+    first_proxy_open: datetime | None = None
+    first_proxy_type: str | None = None
+
+
 async def build_dashboard_context(
     db: AsyncSession,
     *,
@@ -57,14 +77,13 @@ async def build_dashboard_context(
         search=search,
         date_range=date_range,
     )
-    opens_by_track_id = await _load_track_opens_map_asc(db, [track.id for track in tracks])
+    open_summaries = await _load_dashboard_open_summaries(db, [track.id for track in tracks])
 
     groups: dict[str, list[dict]] = {}
     ungrouped: list[dict] = []
 
     for track in tracks:
-        opens = opens_by_track_id.get(track.id, [])
-        track_data = _build_track_summary(track, opens)
+        track_data = _build_track_summary(track, open_summaries.get(track.id))
 
         if filter_value == "opened" and track_data["real_open_count"] == 0:
             continue
@@ -233,7 +252,7 @@ async def export_tracks_csv(db: AsyncSession) -> tuple[str, str]:
     return f"mailtrack_export_{export_date}.csv", output.getvalue()
 
 
-async def _load_track_opens_asc(db: AsyncSession, track_id: str) -> list[Open]:
+async def _load_track_opens_asc(db: AsyncSession, track_id: str) -> list[OpenSnapshot]:
     return (await _load_track_opens_map_asc(db, [track_id])).get(track_id, [])
 
 
@@ -287,26 +306,83 @@ async def _load_dashboard_track_snapshots(
 async def _load_track_opens_map_asc(
     db: AsyncSession,
     track_ids: list[str],
-) -> dict[str, list[Open]]:
+) -> dict[str, list[OpenSnapshot]]:
     if not track_ids:
         return {}
 
     opens_result = await db.execute(
-        select(Open)
+        select(
+            Open.tracked_email_id,
+            Open.opened_at,
+            Open.ip_address,
+            Open.user_agent,
+            Open.country,
+            Open.city,
+        )
         .where(Open.tracked_email_id.in_(track_ids))
         .order_by(Open.tracked_email_id.asc(), Open.opened_at.asc(), Open.id.asc())
     )
 
-    opens_by_track_id: dict[str, list[Open]] = defaultdict(list)
-    for open_event in opens_result.scalars():
-        opens_by_track_id[open_event.tracked_email_id].append(open_event)
+    opens_by_track_id: dict[str, list[OpenSnapshot]] = defaultdict(list)
+    for tracked_email_id, opened_at, ip_address, user_agent, country, city in opens_result:
+        opens_by_track_id[tracked_email_id].append(
+            OpenSnapshot(
+                tracked_email_id=tracked_email_id,
+                opened_at=opened_at,
+                ip_address=ip_address,
+                user_agent=user_agent,
+                country=country,
+                city=city,
+            )
+        )
 
     return dict(opens_by_track_id)
 
 
-def _partition_proxy_opens(opens: list[Open]) -> tuple[list[tuple[Open, str]], list[Open]]:
-    proxy_opens: list[tuple[Open, str]] = []
-    real_opens: list[Open] = []
+async def _load_dashboard_open_summaries(
+    db: AsyncSession,
+    track_ids: list[str],
+) -> dict[str, DashboardOpenSummary]:
+    if not track_ids:
+        return {}
+
+    result = await db.execute(
+        select(
+            Open.tracked_email_id,
+            Open.opened_at,
+            Open.ip_address,
+            Open.user_agent,
+        )
+        .where(Open.tracked_email_id.in_(track_ids))
+        .order_by(Open.tracked_email_id.asc(), Open.opened_at.asc(), Open.id.asc())
+    )
+
+    summaries: dict[str, DashboardOpenSummary] = {}
+    for tracked_email_id, opened_at, ip_address, user_agent in result:
+        summary = summaries.setdefault(tracked_email_id, DashboardOpenSummary())
+        summary.open_count += 1
+        if summary.first_open is None:
+            summary.first_open = opened_at
+
+        proxy_type = detect_proxy_type(ip_address, user_agent or "")
+        if proxy_type is not None:
+            if summary.first_proxy_open is None:
+                summary.first_proxy_open = opened_at
+                summary.first_proxy_type = proxy_type
+            continue
+
+        summary.real_open_count += 1
+        if summary.first_real_open is None:
+            summary.first_real_open = opened_at
+
+    return summaries
+
+
+def _partition_proxy_opens(
+    opens: list[OpenSnapshot],
+) -> tuple[list[tuple[OpenSnapshot, str]], list[OpenSnapshot]]:
+    proxy_opens: list[tuple[OpenSnapshot, str]] = []
+    real_opens: list[OpenSnapshot] = []
 
     for open_event in opens:
         proxy_type = detect_proxy_type(open_event.ip_address, open_event.user_agent or "")
@@ -318,17 +394,20 @@ def _partition_proxy_opens(opens: list[Open]) -> tuple[list[tuple[Open, str]], l
     return proxy_opens, real_opens
 
 
-def _build_track_summary(track: DashboardTrackSnapshot, opens: list[Open]) -> dict:
-    proxy_opens, real_opens = _partition_proxy_opens(opens)
+def _build_track_summary(
+    track: DashboardTrackSnapshot,
+    open_summary: DashboardOpenSummary | None,
+) -> dict:
+    open_summary = open_summary or DashboardOpenSummary()
 
     return {
         "track": track,
-        "open_count": len(opens),
-        "real_open_count": len(real_opens),
-        "first_open": opens[0].opened_at if opens else None,
-        "first_real_open": real_opens[0].opened_at if real_opens else None,
-        "first_proxy_open": proxy_opens[0][0].opened_at if proxy_opens else None,
-        "first_proxy_type": proxy_opens[0][1] if proxy_opens else None,
+        "open_count": open_summary.open_count,
+        "real_open_count": open_summary.real_open_count,
+        "first_open": open_summary.first_open,
+        "first_real_open": open_summary.first_real_open,
+        "first_proxy_open": open_summary.first_proxy_open,
+        "first_proxy_type": open_summary.first_proxy_type,
         "pinned": track.pinned or False,
     }
 

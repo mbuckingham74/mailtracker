@@ -134,7 +134,18 @@ async def get_track(
         created_at=track.created_at,
         open_count=len(opens),
         pixel_url=get_pixel_url(track.id),
-        opens=[OpenResponse.model_validate(o) for o in opens]
+        opens=[
+            OpenResponse(
+                id=open_record.id,
+                opened_at=open_record.opened_at,
+                ip_address=open_record.ip_address,
+                user_agent=open_record.user_agent,
+                referer=open_record.referer,
+                country=open_record.country,
+                city=open_record.city,
+            )
+            for open_record in opens
+        ],
     )
 
 
@@ -145,7 +156,18 @@ async def get_track_opens(
     _auth: bool = Depends(verify_api_key)
 ):
     opens = await list_track_open_records(db, track_id)
-    return [OpenResponse.model_validate(o) for o in opens]
+    return [
+        OpenResponse(
+            id=open_record.id,
+            opened_at=open_record.opened_at,
+            ip_address=open_record.ip_address,
+            user_agent=open_record.user_agent,
+            referer=open_record.referer,
+            country=open_record.country,
+            city=open_record.city,
+        )
+        for open_record in opens
+    ]
 
 
 @router.delete("/tracks/{track_id}")

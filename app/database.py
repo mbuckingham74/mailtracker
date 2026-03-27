@@ -91,8 +91,8 @@ async def check_database_health() -> tuple[bool, str | None]:
     """Verify database connectivity and ORM/schema compatibility."""
     try:
         async with async_session() as session:
-            await session.execute(select(TrackedEmail).limit(1))
-            await session.execute(select(Open).limit(1))
+            await session.execute(select(TrackedEmail.id).limit(1))
+            await session.execute(select(Open.id).limit(1))
         return True, None
     except Exception as exc:
         return False, str(exc)

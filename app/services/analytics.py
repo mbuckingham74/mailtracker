@@ -141,7 +141,7 @@ async def _load_tracks_and_real_opens(
     track_result = await db.execute(track_query)
     tracks = [
         TrackSnapshot(id=track_id, created_at=created_at)
-        for track_id, created_at in track_result.all()
+        for track_id, created_at in track_result
     ]
 
     real_opens = await load_real_open_events(db, cutoff=cutoff, include_location=True)

@@ -40,6 +40,17 @@ class RecentOpenTrackSnapshot:
     subject: str | None
 
 
+@dataclass(frozen=True)
+class OpenSnapshot:
+    id: int
+    opened_at: datetime | None
+    ip_address: str | None
+    user_agent: str | None
+    referer: str | None
+    country: str | None
+    city: str | None
+
+
 async def list_tracks(db: AsyncSession) -> list[tuple[TrackSnapshot, int]]:
     open_counts = (
         select(
@@ -101,19 +112,41 @@ async def create_track(
     return new_track
 
 
-async def get_track_with_opens(db: AsyncSession, track_id: str) -> tuple[TrackSnapshot, list[Open]]:
+async def get_track_with_opens(
+    db: AsyncSession,
+    track_id: str,
+) -> tuple[TrackSnapshot, list[OpenSnapshot]]:
     track = await _get_track_or_404(db, track_id)
     opens = await list_track_opens(db, track_id)
     return track, opens
 
 
-async def list_track_opens(db: AsyncSession, track_id: str) -> list[Open]:
+async def list_track_opens(db: AsyncSession, track_id: str) -> list[OpenSnapshot]:
     result = await db.execute(
-        select(Open)
+        select(
+            Open.id,
+            Open.opened_at,
+            Open.ip_address,
+            Open.user_agent,
+            Open.referer,
+            Open.country,
+            Open.city,
+        )
         .where(Open.tracked_email_id == track_id)
         .order_by(Open.opened_at.desc(), Open.id.desc())
     )
-    return result.scalars().all()
+    return [
+        OpenSnapshot(
+            id=open_id,
+            opened_at=opened_at,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            referer=referer,
+            country=country,
+            city=city,
+        )
+        for open_id, opened_at, ip_address, user_agent, referer, country, city in result
+    ]
 
 
 async def delete_track(db: AsyncSession, track_id: str) -> None:
