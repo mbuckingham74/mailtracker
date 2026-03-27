@@ -53,6 +53,18 @@ class OpenSnapshotTests(unittest.TestCase):
         self.assertIsNone(snapshot.proxy_type)
         self.assertTrue(snapshot.is_real_open)
 
+    def test_build_stored_open_snapshot_normalizes_naive_time_to_utc(self) -> None:
+        opened_at = datetime(2026, 3, 27, 18, 0)
+
+        snapshot = build_stored_open_snapshot(
+            opened_at=opened_at,
+            ip_address="8.8.8.8",
+            user_agent="Mozilla/5.0",
+            is_real_open=True,
+        )
+
+        self.assertEqual(opened_at.replace(tzinfo=timezone.utc), snapshot.opened_at)
+
 
 if __name__ == "__main__":
     unittest.main()

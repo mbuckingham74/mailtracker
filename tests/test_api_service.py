@@ -34,7 +34,7 @@ class SequenceAsyncSession:
 
 class ApiServiceTests(unittest.IsolatedAsyncioTestCase):
     async def test_get_stats_includes_latest_real_open_metadata(self) -> None:
-        opened_at = datetime(2026, 3, 27, 18, 0, tzinfo=timezone.utc)
+        opened_at = datetime(2026, 3, 27, 18, 0)
         db = SequenceAsyncSession(
             [
                 ScalarResult(12),
@@ -64,7 +64,7 @@ class ApiServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             {
                 "open_id": 99,
-                "opened_at": opened_at,
+                "opened_at": opened_at.replace(tzinfo=timezone.utc),
                 "recipient": "alice@example.com",
                 "subject": "Hello",
                 "country": "United States",

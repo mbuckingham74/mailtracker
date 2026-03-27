@@ -2,6 +2,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import TypeVar
 
+from .time_utils import ensure_utc
+
 
 SnapshotT = TypeVar("SnapshotT", bound="StoredOpenSnapshot")
 
@@ -28,7 +30,7 @@ def _stored_open_snapshot_fields(
     is_real_open: bool | None,
 ) -> dict[str, datetime | str | bool | None]:
     return {
-        "opened_at": opened_at,
+        "opened_at": ensure_utc(opened_at),
         "ip_address": ip_address,
         "user_agent": user_agent,
         "country": country,

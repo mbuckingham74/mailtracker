@@ -134,7 +134,7 @@ async def load_track_open_summaries(
         summary = summaries.setdefault(tracked_email_id, TrackOpenSummary())
         _accumulate_track_open_summary(
             summary,
-            opened_at=opened_at,
+            opened_at=ensure_utc(opened_at),
             is_real_open=is_real_open,
             proxy_type=proxy_type,
         )
@@ -254,7 +254,7 @@ async def load_recent_real_open_records(
             recent_opens.append(
                 RecentRealOpenRecord(
                     id=open_id,
-                    opened_at=opened_at,
+                    opened_at=ensure_utc(opened_at),
                     country=country,
                     city=city,
                     ip_address=ip_address,

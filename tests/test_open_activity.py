@@ -90,6 +90,30 @@ class OpenActivityTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("apple", records[0].proxy_type)
         self.assertFalse(records[0].is_real_open)
 
+    async def test_load_track_open_records_map_normalizes_naive_time_to_utc(self) -> None:
+        opened_at = datetime(2026, 3, 27, 19, 0)
+        db = FakeAsyncSession([
+            (
+                "track-1",
+                99,
+                opened_at,
+                True,
+                None,
+                "8.8.8.8",
+                "Mozilla/5.0",
+                "",
+                "United States",
+                "New York",
+            ),
+        ])
+
+        records_by_track_id = await load_track_open_records_map(db, ["track-1"])
+
+        self.assertEqual(
+            opened_at.replace(tzinfo=timezone.utc),
+            records_by_track_id["track-1"][0].opened_at,
+        )
+
     async def test_load_track_open_summaries_counts_proxy_and_real_firsts(self) -> None:
         proxy_opened_at = datetime(2026, 3, 27, 12, 0, tzinfo=timezone.utc)
         real_opened_at = datetime(2026, 3, 27, 13, 0, tzinfo=timezone.utc)
@@ -227,6 +251,31 @@ class OpenActivityTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([], records)
         self.assertEqual(1, len(db.queries))
         self.assertIn(since_dt, db.queries[0].compile().params.values())
+
+    async def test_load_recent_real_open_records_normalizes_naive_time_to_utc(self) -> None:
+        opened_at = datetime(2026, 3, 27, 18, 0)
+        db = SequenceAsyncSession([
+            [
+                (
+                    30,
+                    opened_at,
+                    "United States",
+                    "New York",
+                    "8.8.8.8",
+                    "Mozilla/5.0",
+                    "track-1",
+                    "alice@example.com",
+                    "Hello",
+                ),
+            ],
+        ])
+
+        records = await load_recent_real_open_records(db, limit=1, batch_size=1)
+
+        self.assertEqual(
+            opened_at.replace(tzinfo=timezone.utc),
+            records[0].opened_at,
+        )
 
 
 if __name__ == "__main__":
