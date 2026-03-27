@@ -47,6 +47,10 @@ STARTUP_INDEX_MIGRATIONS = {
         ),
     },
     "opens": {
+        "ix_opens_is_real_open_opened_at_id": (
+            "CREATE INDEX ix_opens_is_real_open_opened_at_id "
+            "ON opens (is_real_open, opened_at, id)"
+        ),
         "ix_opens_opened_at_id": (
             "CREATE INDEX ix_opens_opened_at_id ON opens (opened_at, id)"
         ),
@@ -80,6 +84,7 @@ class TrackedEmail(Base):
 class Open(Base):
     __tablename__ = "opens"
     __table_args__ = (
+        Index("ix_opens_is_real_open_opened_at_id", "is_real_open", "opened_at", "id"),
         Index("ix_opens_opened_at_id", "opened_at", "id"),
         Index("ix_opens_tracked_email_id_opened_at_id", "tracked_email_id", "opened_at", "id"),
     )
