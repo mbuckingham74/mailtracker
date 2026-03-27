@@ -219,7 +219,7 @@ Use the checked-in scripts instead of relying on remembered shell history:
 Each script supports overrides via environment variables:
 
 ```bash
-MAILTRACK_REMOTE_HOST=michael@tachyonfuture.com
+MAILTRACK_REMOTE_HOST=michael@100.115.127.119
 MAILTRACK_REMOTE_PATH=/home/michael/docker-configs/mailtrack
 MAILTRACK_HEALTHCHECK_URL=https://mailtrack.tachyonfuture.com/health
 ```

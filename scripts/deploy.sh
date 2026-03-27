@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REMOTE_HOST="${MAILTRACK_REMOTE_HOST:-michael@tachyonfuture.com}"
+REMOTE_HOST="${MAILTRACK_REMOTE_HOST:-michael@100.115.127.119}"
 REMOTE_PATH="${MAILTRACK_REMOTE_PATH:-/home/michael/docker-configs/mailtrack}"
 HEALTHCHECK_URL="${MAILTRACK_HEALTHCHECK_URL:-https://mailtrack.tachyonfuture.com/health}"
 APP_CONTAINER_NAME="${MAILTRACK_APP_CONTAINER_NAME:-mailtrack}"
