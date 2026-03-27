@@ -194,10 +194,11 @@ async def toggle_track_pin(db: AsyncSession, track_id: str) -> None:
 
 
 async def update_track_notes(db: AsyncSession, track_id: str, notes: str) -> None:
+    normalized_notes = (notes or "").strip() or None
     await db.execute(
         update(TrackedEmail)
         .where(TrackedEmail.id == track_id)
-        .values(notes=notes.strip() if notes else None)
+        .values(notes=normalized_notes)
     )
     await db.commit()
 
