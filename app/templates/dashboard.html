@@ -100,7 +100,7 @@ function clearSearch() {
             {% if item.first_proxy_open %}
             <div class="delivery-info">
                 <span class="delivery-icon">📬</span>
-                Delivered to {{ 'iCloud' if item.first_proxy_type == 'apple' else 'Gmail' }} at {{ to_local(item.first_proxy_open).strftime('%-I:%M %p %Z') }}
+                Delivered to {% if item.first_proxy_type == 'apple' %}iCloud{% elif item.first_proxy_type == 'google' %}Gmail{% elif item.first_proxy_type == 'microsoft' %}Microsoft 365{% else %}Proxy{% endif %} at {{ to_local(item.first_proxy_open).strftime('%-I:%M %p %Z') }}
             </div>
             {% endif %}
             <div class="opens-count">
@@ -151,7 +151,7 @@ function clearSearch() {
             {% if item.first_proxy_open %}
             <div class="delivery-info">
                 <span class="delivery-icon">📬</span>
-                Delivered to {{ 'iCloud' if item.first_proxy_type == 'apple' else 'Gmail' }} at {{ to_local(item.first_proxy_open).strftime('%-I:%M %p %Z') }}
+                Delivered to {% if item.first_proxy_type == 'apple' %}iCloud{% elif item.first_proxy_type == 'google' %}Gmail{% elif item.first_proxy_type == 'microsoft' %}Microsoft 365{% else %}Proxy{% endif %} at {{ to_local(item.first_proxy_open).strftime('%-I:%M %p %Z') }}
             </div>
             {% endif %}
             <div class="opens-count">

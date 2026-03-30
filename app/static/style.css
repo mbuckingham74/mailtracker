@@ -696,6 +696,12 @@ a.recipient-row:hover {
     border: 1px solid #c2d7f9;
 }
 
+.proxy-badge.microsoft {
+    background: #eef6ff;
+    color: #0a63b0;
+    border: 1px solid #bfd8f6;
+}
+
 .proxy-open {
     opacity: 0.6;
 }

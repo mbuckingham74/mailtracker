@@ -19,6 +19,7 @@ from ..notifications import (
 )
 from ..time_utils import ensure_utc
 from ..open_classification import classify_open
+from ..proxy_detection import is_microsoft_hosted_ip
 from .open_activity import load_real_open_summaries
 
 logger = logging.getLogger(__name__)
@@ -26,6 +27,7 @@ logger = logging.getLogger(__name__)
 MIN_OPEN_DELAY_SECONDS = 5
 MAX_RECORD_PIXEL_OPEN_ATTEMPTS = 3
 RETRYABLE_MYSQL_ERROR_CODES = {1205, 1213}
+MICROSOFT_SCANNER_MAX_DELAY_SECONDS = 45
 
 
 @dataclass(frozen=True)
@@ -105,6 +107,16 @@ async def _record_pixel_open_once(
     user_agent = request.headers.get("User-Agent", "")
     referer = request.headers.get("Referer", "")
     is_real_open, proxy_type = classify_open(ip_address, user_agent)
+    seconds_since_sent = (now - created_at).total_seconds()
+    if _should_classify_as_microsoft_scanner(
+        ip_address=ip_address,
+        user_agent=user_agent,
+        referer=referer,
+        seconds_since_sent=seconds_since_sent,
+        proxy_type=proxy_type,
+    ):
+        is_real_open = False
+        proxy_type = "microsoft"
     country, city = lookup_ip(ip_address)
 
     email_recipient = tracked_email.recipient or "Unknown"
@@ -207,6 +219,35 @@ def _is_retryable_mysql_error(exc: OperationalError) -> bool:
         return False
 
     return error_code in RETRYABLE_MYSQL_ERROR_CODES
+
+
+def _should_classify_as_microsoft_scanner(
+    *,
+    ip_address: str,
+    user_agent: str,
+    referer: str,
+    seconds_since_sent: float,
+    proxy_type: str | None,
+) -> bool:
+    if proxy_type is not None:
+        return False
+    if seconds_since_sent < 0 or seconds_since_sent > MICROSOFT_SCANNER_MAX_DELAY_SECONDS:
+        return False
+    if not is_microsoft_hosted_ip(ip_address):
+        return False
+
+    normalized_referer = referer.strip().lower()
+    if normalized_referer and not any(
+        hint in normalized_referer
+        for hint in ("outlook", "office", "live.com", "microsoft")
+    ):
+        return False
+
+    normalized_user_agent = user_agent.strip().lower()
+    return any(
+        token in normalized_user_agent
+        for token in ("mozilla/5.0", "chrome/", "safari/", "edg/", "firefox/")
+    )
 
 
 async def _load_recent_real_open_count(

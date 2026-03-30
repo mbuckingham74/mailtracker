@@ -99,7 +99,7 @@ class FrozenDateTime:
 
 
 class TrackingServiceTests(unittest.IsolatedAsyncioTestCase):
-    def _build_request(self) -> Request:
+    def _build_request(self, headers: list[tuple[bytes, bytes]] | None = None) -> Request:
         return Request(
             {
                 "type": "http",
@@ -110,7 +110,7 @@ class TrackingServiceTests(unittest.IsolatedAsyncioTestCase):
                 "raw_path": b"/p/track-1.gif",
                 "query_string": b"",
                 "root_path": "",
-                "headers": [],
+                "headers": headers or [],
                 "client": ("127.0.0.1", 12345),
                 "server": ("testserver", 443),
             }
@@ -221,6 +221,51 @@ class TrackingServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(0, len(background_tasks.tasks))
         self.assertFalse(db.added[0].is_real_open)
         self.assertEqual("google", db.added[0].proxy_type)
+
+    async def test_record_pixel_open_classifies_immediate_microsoft_hosted_fetch_as_proxy(self) -> None:
+        frozen_now = FrozenDateTime.now()
+        db = SequenceAsyncSession(
+            [
+                (
+                    "alice@example.com",
+                    "Hello",
+                    frozen_now - timedelta(seconds=18),
+                    None,
+                    None,
+                    None,
+                )
+            ]
+        )
+        background_tasks = BackgroundTasks()
+
+        with (
+            patch.object(tracking, "datetime", FrozenDateTime),
+            patch.object(tracking, "get_client_ip", return_value="51.54.38.123"),
+            patch.object(tracking, "classify_open", return_value=(True, None)),
+            patch.object(tracking, "lookup_ip", return_value=(None, None)),
+            patch.object(tracking, "is_email_notifications_enabled", return_value=False),
+        ):
+            await tracking.record_pixel_open(
+                db,
+                "track-1",
+                self._build_request(
+                    headers=[
+                        (
+                            b"user-agent",
+                            b"Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                            b"AppleWebKit/537.36 (KHTML, like Gecko) "
+                            b"Chrome/109.0.0.0 Safari/537.36",
+                        )
+                    ]
+                ),
+                background_tasks,
+            )
+
+        self.assertEqual(1, db.commits)
+        self.assertEqual(0, db.flushes)
+        self.assertEqual(0, len(background_tasks.tasks))
+        self.assertFalse(db.added[0].is_real_open)
+        self.assertEqual("microsoft", db.added[0].proxy_type)
 
     async def test_record_pixel_open_schedules_all_real_open_notifications(self) -> None:
         frozen_now = FrozenDateTime.now()

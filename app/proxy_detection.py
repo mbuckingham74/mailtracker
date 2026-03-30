@@ -21,9 +21,26 @@ GOOGLE_PROXY_RANGES = [
     ipaddress.ip_network('209.85.128.0/17'), # Google
 ]
 
+MICROSOFT_HOSTED_IP_RANGES = [
+    ipaddress.ip_network('51.54.0.0/15'),
+    ipaddress.ip_network('51.56.0.0/14'),
+]
+
 
 def _looks_like_generic_apple_proxy_user_agent(user_agent: str) -> bool:
     return user_agent.strip().lower() in {"", "mozilla/5.0"}
+
+
+def is_microsoft_hosted_ip(ip_str: str) -> bool:
+    if not ip_str:
+        return False
+
+    try:
+        ip = ipaddress.ip_address(ip_str)
+    except ValueError:
+        return False
+
+    return any(ip in network for network in MICROSOFT_HOSTED_IP_RANGES)
 
 
 def detect_proxy_type(ip_str: str, user_agent: str = "") -> str | None:
