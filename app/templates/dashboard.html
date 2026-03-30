@@ -104,8 +104,14 @@ function clearSearch() {
             </div>
             {% endif %}
             <div class="opens-count">
-                {{ item.total_real_opens }} open{{ 's' if item.total_real_opens != 1 else '' }}
+                {{ item.total_real_opens }} real open{{ 's' if item.total_real_opens != 1 else '' }}
             </div>
+            {% set group_proxy_count = item.total_opens - item.total_real_opens %}
+            {% if group_proxy_count > 0 %}
+            <div class="proxy-count">
+                {{ group_proxy_count }} proxy fetch{{ 'es' if group_proxy_count != 1 else '' }}
+            </div>
+            {% endif %}
             {% if item.first_real_open %}
             <div class="last-open">Opened {{ to_local(item.first_real_open).strftime('%b %d at %-I:%M %p %Z') }}</div>
             {% endif %}
@@ -149,8 +155,14 @@ function clearSearch() {
             </div>
             {% endif %}
             <div class="opens-count">
-                {{ item.real_open_count }} open{{ 's' if item.real_open_count != 1 else '' }}
+                {{ item.real_open_count }} real open{{ 's' if item.real_open_count != 1 else '' }}
             </div>
+            {% set proxy_count = item.open_count - item.real_open_count %}
+            {% if proxy_count > 0 %}
+            <div class="proxy-count">
+                {{ proxy_count }} proxy fetch{{ 'es' if proxy_count != 1 else '' }}
+            </div>
+            {% endif %}
             {% if item.first_real_open %}
             <div class="last-open">Opened {{ to_local(item.first_real_open).strftime('%b %d at %-I:%M %p %Z') }}</div>
             {% endif %}

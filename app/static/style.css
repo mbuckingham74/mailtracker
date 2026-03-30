@@ -1332,8 +1332,24 @@ html.dark-mode table th {
     background: #1a1a2e;
 }
 
+html.dark-mode table {
+    background: #102746;
+    color: #e6edf7;
+    border: 1px solid #243a57;
+}
+
 html.dark-mode table td {
+    background: #123054;
+    color: #dfe8f5;
     border-bottom-color: #2a2a4e;
+}
+
+html.dark-mode table tbody tr:nth-child(even) td {
+    background: #14365d;
+}
+
+html.dark-mode table tbody tr:hover td {
+    background: #1a3a6e;
 }
 
 html.dark-mode .recipients-table th {
@@ -1409,6 +1425,21 @@ html.dark-mode .notes-section h3 {
     color: #e0e0e0;
 }
 
+html.dark-mode .track-info p,
+html.dark-mode .track-metadata p {
+    color: #d7e1ef;
+}
+
+html.dark-mode .delivery-info-detail {
+    color: #5fd49a;
+    border-bottom-color: #2a4d73;
+}
+
+html.dark-mode .proxy-note,
+html.dark-mode .user-agent {
+    color: #b3c1d6;
+}
+
 html.dark-mode .notes-textarea {
     background: #1a1a2e;
     border-color: #3a3a5e;
@@ -1444,6 +1475,14 @@ html.dark-mode .recipient-pill.opened {
 
 html.dark-mode .notes-display {
     color: #999;
+}
+
+html.dark-mode .proxy-open td {
+    background: #173151;
+}
+
+html.dark-mode .proxy-open:hover td {
+    background: #1d4068;
 }
 
 html.dark-mode .cities-table th {
