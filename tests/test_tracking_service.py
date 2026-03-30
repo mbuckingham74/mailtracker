@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, patch
 
 from fastapi import BackgroundTasks, Request
+from sqlalchemy.exc import OperationalError
 
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///test.db")
 os.environ.setdefault("SECRET_KEY", "test-secret")
@@ -30,6 +31,7 @@ class FakeAsyncSession:
         self.queries = []
         self.commits = 0
         self.flushes = 0
+        self.rollbacks = 0
 
     async def execute(self, query):
         self.queries.append(query)
@@ -44,6 +46,9 @@ class FakeAsyncSession:
     async def flush(self) -> None:
         self.flushes += 1
 
+    async def rollback(self) -> None:
+        self.rollbacks += 1
+
 
 class SequenceAsyncSession:
     def __init__(self, rows):
@@ -52,6 +57,7 @@ class SequenceAsyncSession:
         self.queries = []
         self.commits = 0
         self.flushes = 0
+        self.rollbacks = 0
 
     async def execute(self, query):
         self.queries.append(query)
@@ -67,6 +73,23 @@ class SequenceAsyncSession:
 
     async def flush(self) -> None:
         self.flushes += 1
+
+    async def rollback(self) -> None:
+        self.rollbacks += 1
+
+
+class RetryOnceAsyncSession(FakeAsyncSession):
+    def __init__(self, row, exc):
+        super().__init__(row)
+        self.exc = exc
+        self.failed_once = False
+
+    async def execute(self, query):
+        self.queries.append(query)
+        if not self.failed_once:
+            self.failed_once = True
+            raise self.exc
+        return FakeResult(self.row)
 
 
 class FrozenDateTime:
@@ -124,6 +147,7 @@ class TrackingServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(1, db.commits)
         self.assertEqual(1, len(db.added))
         self.assertEqual(frozen_now, db.added[0].opened_at)
+        self.assertIn("FOR UPDATE", str(db.queries[0]))
 
     async def test_record_pixel_open_returns_early_for_missing_track(self) -> None:
         db = FakeAsyncSession(None)
@@ -250,6 +274,44 @@ class TrackingServiceTests(unittest.IsolatedAsyncioTestCase):
             ["recipient", "subject", "opened_at", "country", "city", "track_id", "sent_at"],
             list(background_tasks.tasks[0].kwargs.keys()),
         )
+
+    async def test_record_pixel_open_retries_transient_mysql_deadlock(self) -> None:
+        frozen_now = FrozenDateTime.now()
+        deadlock_error = OperationalError(
+            "SELECT ... FOR UPDATE",
+            {},
+            RuntimeError(1213, "Deadlock found when trying to get lock; try restarting transaction"),
+        )
+        db = RetryOnceAsyncSession(
+            (
+                "alice@example.com",
+                "Hello",
+                frozen_now - timedelta(seconds=10),
+                None,
+                None,
+                None,
+            ),
+            deadlock_error,
+        )
+
+        with (
+            patch.object(tracking, "datetime", FrozenDateTime),
+            patch.object(tracking, "get_client_ip", return_value="8.8.8.8"),
+            patch.object(tracking, "classify_open", return_value=(True, None)),
+            patch.object(tracking, "lookup_ip", return_value=("United States", "New York")),
+            patch.object(tracking, "is_email_notifications_enabled", return_value=False),
+            patch.object(tracking.asyncio, "sleep", AsyncMock()),
+        ):
+            await tracking.record_pixel_open(
+                db,
+                "track-1",
+                self._build_request(),
+                BackgroundTasks(),
+            )
+
+        self.assertEqual(1, db.rollbacks)
+        self.assertEqual(1, db.commits)
+        self.assertEqual(1, len(db.added))
 
 
 if __name__ == "__main__":

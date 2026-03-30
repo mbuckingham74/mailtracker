@@ -1,9 +1,11 @@
+import asyncio
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 from fastapi import BackgroundTasks, Request
 from sqlalchemy import select, update
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..client_ip import get_client_ip
@@ -22,6 +24,8 @@ from .open_activity import load_real_open_summaries
 logger = logging.getLogger(__name__)
 
 MIN_OPEN_DELAY_SECONDS = 5
+MAX_RECORD_PIXEL_OPEN_ATTEMPTS = 3
+RETRYABLE_MYSQL_ERROR_CODES = {1205, 1213}
 
 
 @dataclass(frozen=True)
@@ -40,6 +44,31 @@ async def record_pixel_open(
     request: Request,
     background_tasks: BackgroundTasks,
 ) -> None:
+    for attempt in range(1, MAX_RECORD_PIXEL_OPEN_ATTEMPTS + 1):
+        try:
+            await _record_pixel_open_once(db, tracking_id, request, background_tasks)
+            return
+        except OperationalError as exc:
+            if not _is_retryable_mysql_error(exc) or attempt == MAX_RECORD_PIXEL_OPEN_ATTEMPTS:
+                raise
+
+            logger.warning(
+                "Retrying transient database error while recording pixel open for %s "
+                "(attempt %s/%s)",
+                tracking_id,
+                attempt + 1,
+                MAX_RECORD_PIXEL_OPEN_ATTEMPTS,
+            )
+            await db.rollback()
+            await asyncio.sleep(0.05 * attempt)
+
+
+async def _record_pixel_open_once(
+    db: AsyncSession,
+    tracking_id: str,
+    request: Request,
+    background_tasks: BackgroundTasks,
+) -> None:
     result = await db.execute(
         select(
             TrackedEmail.recipient,
@@ -48,7 +77,9 @@ async def record_pixel_open(
             TrackedEmail.notified_at,
             TrackedEmail.hot_notified_at,
             TrackedEmail.revived_notified_at,
-        ).where(TrackedEmail.id == tracking_id)
+        )
+        .where(TrackedEmail.id == tracking_id)
+        .with_for_update()
     )
     row = result.one_or_none()
     if row is None:
@@ -163,6 +194,19 @@ async def record_pixel_open(
             days_since_first_open=days_since_first_real_open,
             track_id=tracking_id,
         )
+
+
+def _is_retryable_mysql_error(exc: OperationalError) -> bool:
+    error_args = getattr(getattr(exc, "orig", None), "args", ())
+    if not error_args:
+        return False
+
+    try:
+        error_code = int(error_args[0])
+    except (TypeError, ValueError):
+        return False
+
+    return error_code in RETRYABLE_MYSQL_ERROR_CODES
 
 
 async def _load_recent_real_open_count(
